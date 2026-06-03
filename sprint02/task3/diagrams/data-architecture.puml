@@ -1,0 +1,51 @@
+@startuml
+!include https://raw.githubusercontent.com/plantuml-stdlib/C4-PlantUML/master/C4_Container.puml
+
+LAYOUT_WITH_LEGEND()
+LAYOUT_LEFT_RIGHT()
+
+title Data Architecture — AdScale TO-BE
+
+Container(bidding, "Bidding Service", "C++ / Go", "RTB bid decisions")
+Container(campaign, "Campaign Service", "Go", "Управления кампаниями")
+Container(delivery, "Delivery Service", "Node.js", "Показы и клики")
+Container(stats, "Statistics Service", "Go / Python", "Агрегация")
+Container(analytics, "Analytics Service", "Python", "Отчёты")
+Container(finance, "Finance Service", "Go", "Балансы и биллинг")
+Container(dashboard, "Advertiser Dashboard", "Node.js", "Дашборд")
+
+ContainerDb(redis, "Redis Cluster", "Redis", "Горячий кеш для bid")
+ContainerDb(biddingDb, "Bidding DB", "PostgreSQL", "Настройка и аудит")
+ContainerDb(campaignDb, "Campaign DB", "PostgreSQL", "Кампании")
+ContainerDb(financeDb, "Finance DB", "PostgreSQL", "Счета, балансы, остатки")
+ContainerQueue(kafka, "Kafka Cluster", "Kafka", "Поток событий")
+ContainerDb(clickhouse, "ClickHouse Cluster", "ClickHouse", "Аналитика")
+ContainerDb(objectStorage, "Object Storage", "S3-compatible", "Бэкапы и длительное хранение")
+
+Rel(campaign, campaignDb, "Чтение/запись", "SQL")
+Rel(campaign, kafka, "Изменение кампании", "Kafka")
+Rel(kafka, redis, "Обновление кеша", "Kafka consumer")
+Rel(bidding, redis, "Чтение горячих снапшотов", "Redis")
+Rel(bidding, biddingDb, "Конфигурация/аудит", "SQL")
+Rel(bidding, kafka, "События ставок", "Kafka")
+Rel(delivery, kafka, "Показы/клики", "Kafka")
+Rel(kafka, stats, "Обработка событий", "Kafka")
+Rel(kafka, analytics, "Обработка событий", "Kafka")
+Rel(kafka, finance, "Финансовые событий", "Kafka")
+Rel(stats, clickhouse, "Запись агрегатов", "Native")
+Rel(analytics, clickhouse, "Чтение отчётов", "SQL")
+Rel(finance, financeDb, "Транзакции", "SQL")
+Rel(dashboard, campaign, "REST-запросы для управления", "REST")
+Rel(dashboard, finance, "Баланс/счета", "REST")
+Rel(dashboard, analytics, "Отчёты", "REST")
+Rel(clickhouse, objectStorage, "Backups/export", "S3")
+Rel(campaignDb, objectStorage, "PITR backups", "WAL/archive")
+Rel(financeDb, objectStorage, "PITR backups", "WAL/archive")
+
+legend right
+  OLTP, кэш, поток событий и аналитика разделены.
+  PostgreSQL используется для транзакционных доменов.
+  Redis используется для чтения с низкой задержкой при размещении ставок.
+  Kafka разделяет производителей и потребителей.
+endlegend
+@enduml
