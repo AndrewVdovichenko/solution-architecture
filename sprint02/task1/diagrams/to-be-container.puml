@@ -1,0 +1,62 @@
+@startuml
+!include https://raw.githubusercontent.com/plantuml-stdlib/C4-PlantUML/master/C4_Container.puml
+
+LAYOUT_WITH_LEGEND()
+LAYOUT_LEFT_RIGHT()
+
+title C4 Container Diagram — AdScale (TO-BE)
+
+Person(advertiser, "Рекламодатель", "Управляет кампаниями, бюджетами и отчетностью")
+Person_Ext(endUser, "Пользователь сайта/приложения", "Смотрит рекламу и кликает по баннерам")
+
+System_Ext(dspPartner, "DSP-партнеры", "Отправляют bid запросы по OpenRTB")
+System_Ext(paymentGateway, "Платёжный шлюз", "Обработка пополнений")
+
+System_Boundary(adscale, "AdScale Platform") {
+  Container(apiGateway, "API Gateway", "NGINX", "Auth, routing, rate limiting, circuit breaker, latency metrics")
+  Container(bidding, "Bidding Service", "C++ / Go", "Выбор ставки и формирование bid ответа") <<Critical Path>>
+  Container(campaign, "Campaign Service", "Go", "Кампании, ставки, таргетинг, статусы")
+  Container(delivery, "Delivery Service", "Node.js", "Подготовка HTML-разметки")
+  Container(stats, "Statistics Service", "Go / Python", "Обработка кликов, показов и bid events")
+  Container(analytics, "Analytics Service", "Python", "Отчёты")
+  Container(finance, "Finance Service", "Go", "Балансы, списания, счета")
+  Container(dashboard, "Advertiser Dashboard", "Node.js + JavaScript", "UI и BFF для рекламодателей")
+
+  ContainerQueue(kafka, "Kafka Cluster", "Kafka", "Поток событий: impressions, clicks, bids, billing")
+  ContainerDb(redis, "Redis Cluster", "Redis", "Hot cache кампаний, ставок, таргетинга, budget availability")
+  ContainerDb(campaignDb, "Campaign DB", "PostgreSQL", "Кампании и настройки таргетинга")
+  ContainerDb(biddingDb, "Bidding DB", "PostgreSQL", "Конфигурация bidding и audit")
+  ContainerDb(financeDb, "Finance DB", "PostgreSQL", "Финансовые транзакции")
+  ContainerDb(clickhouse, "Analytics DB", "ClickHouse", "События, агрегации, отчеты")
+  ContainerDb(objectStorage, "Object Storage", "S3-compatible", "Ассеты")
+}
+
+Rel(dspPartner, apiGateway, "Bid запросы / ответы", "HTTPS / OpenRTB")
+Rel(apiGateway, bidding, "Управляет bid запросами", "gRPC / HTTP")
+Rel(bidding, redis, "Чтение горячих данных", "Redis protocol")
+Rel(bidding, biddingDb, "Чтение конфига", "SQL")
+Rel(bidding, kafka, "Публикация bid событий", "Kafka")
+Rel(endUser, delivery, "Просмотр рекламы и клики", "HTTPS")
+
+Rel(advertiser, dashboard, "Управляет кампаниями и бюджетами", "HTTPS")
+Rel(dashboard, campaign, "CRUD по кампаниям", "REST")
+Rel(dashboard, analytics, "Отчёты", "REST")
+Rel(dashboard, finance, "Счета и балансы", "REST")
+Rel(campaign, campaignDb, "Запись/чтение кампаний", "SQL")
+Rel(campaign, kafka, "Публикация изменений", "Kafka")
+Rel(kafka, stats, "Потребляет поток событий", "Kafka")
+Rel(kafka, analytics, "Потребляет поток событий", "Kafka")
+Rel(kafka, finance, "Потребляет финансовые события", "Kafka")
+Rel(stats, clickhouse, "Агрегирует запись", "Native protocol")
+Rel(analytics, clickhouse, "Чтение отчётов", "SQL")
+Rel(finance, financeDb, "Транзакции", "SQL")
+Rel(finance, paymentGateway, "Платежи", "HTTPS / REST")
+Rel(kafka, redis, "Инвалидация кеша и варнинги", "Consumers")
+
+legend right
+  <#FF0000> Критический путь: API Gateway -> Bidding -> Redis -> Response
+  <#FF7700> События и асинхронщина через Kafka
+  <#00AA00> Цель: 50 000 RPS, SLA 99.9%, P95 <= 100 ms
+  <#888888> Database per Service и независимое масштабирование
+endlegend
+@enduml

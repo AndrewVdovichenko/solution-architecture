@@ -1,0 +1,36 @@
+@startuml
+!include https://raw.githubusercontent.com/plantuml-stdlib/C4-PlantUML/master/C4_Component.puml
+
+LAYOUT_WITH_LEGEND()
+
+title RTB Component Diagram — Bidding Service
+
+Container_Boundary(bidding, "Bidding Service") {
+  Component(auctionRules, "Auction Rules Engine", "C++", "Применяет бизнес-правила и выбирает победителя")
+  Component(candidateSelector, "Candidate Selector", "C++ / Go", "Подбирает кампании из горячего кеша")
+  Component(eventPublisher, "Event Publisher", "Kafka", "Публикует события bid")
+  Component(requestHandler, "Bid Request Handler", "gRPC", "Принимает внутренний bid request")
+  Component(responseBuilder, "Response Builder", "Library", "Формирует bid/no-bid ответ")
+  Component(validator, "Request Validator", "Library", "Проверяет обязательные поля и таймаут")
+}
+
+Container(apiGateway, "API Gateway", "Envoy / NGINX", "Маршрутизация и защита")
+ContainerDb(biddingDb, "Bidding DB", "PostgreSQL", "Конфигурация и просмотр за критическим путём")
+ContainerQueue(kafka, "Kafka", "Kafka", "События RTB")
+ContainerDb(redis, "Redis Cluster", "Redis", "Горячий кеш кампаний и бюджетов")
+
+Rel(apiGateway, requestHandler, "Запрос ставки", "gRPC")
+Rel(auctionRules, biddingDb, "Просмотр и настройка вне критического пути", "SQL")
+Rel(auctionRules, eventPublisher, "Decision event")
+Rel(auctionRules, responseBuilder, "Победитель или no-bid")
+Rel(candidateSelector, auctionRules, "Candidates")
+Rel(candidateSelector, redis, "Чтение снапшотов", "Redis")
+Rel(eventPublisher, kafka, "Публикация", "Kafka")
+Rel(requestHandler, validator, "Валидация")
+Rel(validator, candidateSelector, "Валидный запрос")
+
+legend right
+  PostgreSQL не используется для принятия обычных решений по ставкам.
+  Redis — единственная синхронная зависимость данных в горячем пути.
+endlegend
+@enduml

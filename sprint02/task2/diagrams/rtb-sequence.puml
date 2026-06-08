@@ -1,0 +1,29 @@
+@startuml
+title RTB bid request sequence
+
+actor "DSP Partner" as DSP
+participant "API Gateway" as GW
+participant "Bidding Service" as BID
+database "Redis Cluster" as REDIS
+queue "Kafka" as KAFKA
+participant "Statistics Service" as STATS
+participant "Finance Service" as FIN
+
+DSP -> GW: POST /openrtb/2.5/bid
+GW -> GW: аутентификация, лимиты, таймауты
+GW -> BID: bid request
+BID -> REDIS: чтение снапшотов
+REDIS --> BID: горячие данные
+BID -> BID: запуск аукциона
+BID --> GW: bid response или no_bid
+GW --> DSP: OpenRTB bid response
+
+BID -> KAFKA: публикует события bid request/bid response
+KAFKA -> STATS: потребляет события для bid
+KAFKA -> FIN: потребляет события биллинга
+
+legend right
+  Синхронный критический путь завершается до потребителей Kafka.
+  Потребители Kafka не блокируют ответ DSP.
+endlegend
+@enduml
