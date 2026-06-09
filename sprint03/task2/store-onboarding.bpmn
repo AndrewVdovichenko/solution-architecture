@@ -1,0 +1,646 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<bpmn:definitions xmlns:bpmn="http://www.omg.org/spec/BPMN/20100524/MODEL" xmlns:bpmndi="http://www.omg.org/spec/BPMN/20100524/DI" xmlns:dc="http://www.omg.org/spec/DD/20100524/DC" xmlns:di="http://www.omg.org/spec/DD/20100524/DI" id="Definitions_VitaStore_Onboarding" targetNamespace="https://vitastore.ru/bpmn/store-onboarding">
+  <bpmn:collaboration id="Collaboration_Onboarding">
+    <bpmn:participant id="Participant_MA" name="M&#38;A / Store Ops" processRef="Process_MA" />
+    <bpmn:participant id="Participant_Matching" name="SKU Matching Service" processRef="Process_Matching" />
+    <bpmn:participant id="Participant_AI" name="AI Service" processRef="Process_AI" />
+    <bpmn:participant id="Participant_Data" name="Товаровед" processRef="Process_Data" />
+    <bpmn:participant id="Participant_SAP" name="SAP ERP" processRef="Process_SAP" />
+    <bpmn:participant id="Participant_POS" name="Cloud POS" processRef="Process_POS" />
+    <bpmn:messageFlow id="Message_Upload" name="Пакет SKU" sourceRef="Task_Upload" targetRef="Start_Matching" />
+    <bpmn:messageFlow id="Message_Invalid" name="Ошибки валидации" sourceRef="Task_Reject" targetRef="Event_Invalid" />
+    <bpmn:messageFlow id="Message_AI_Request" name="Несопоставленные SKU" sourceRef="Task_AI_Request" targetRef="Start_AI" />
+    <bpmn:messageFlow id="Message_AI_Response" name="Кандидаты + оценка уверенности" sourceRef="Task_AI_Response" targetRef="Task_AI_Wait" />
+    <bpmn:messageFlow id="Message_Review" name="Исключения + выборка 2%" sourceRef="Task_CreateReview" targetRef="Start_Review" />
+    <bpmn:messageFlow id="Message_Approved" name="Подтверждённые решения" sourceRef="Task_SendReview" targetRef="Task_WaitReview" />
+    <bpmn:messageFlow id="Message_SAP_Request" name="Подтверждённый маппинг" sourceRef="Task_Export" targetRef="Start_SAP" />
+    <bpmn:messageFlow id="Message_SAP_Response" name="Маппинг загружен" sourceRef="Task_SAP_Confirm" targetRef="Task_WaitSAP" />
+    <bpmn:messageFlow id="Message_POS_Request" name="Каталог к публикации" sourceRef="Task_Publish" targetRef="Start_POS" />
+    <bpmn:messageFlow id="Message_POS_Response" name="Каталог опубликован" sourceRef="Task_POS_Confirm" targetRef="Task_WaitPOS" />
+    <bpmn:messageFlow id="Message_Report" name="Отчёт о готовности" sourceRef="Task_Report" targetRef="Event_Ready" />
+  </bpmn:collaboration>
+  <bpmn:process id="Process_MA" isExecutable="false">
+    <bpmn:startEvent id="Start_MA" name="Сделка M&#38;A завершена" />
+    <bpmn:userTask id="Task_Upload" name="Загрузить пакет SKU через защищённый портал" />
+    <bpmn:eventBasedGateway id="Gateway_WaitResult" name="Ожидать результат">
+      <bpmn:incoming>Flow_0t8ry5s</bpmn:incoming>
+    </bpmn:eventBasedGateway>
+    <bpmn:intermediateCatchEvent id="Event_Ready" name="Получить отчёт о готовности">
+      <bpmn:messageEventDefinition />
+    </bpmn:intermediateCatchEvent>
+    <bpmn:endEvent id="End_MA" name="Магазин готов к открытию" />
+    <bpmn:sequenceFlow id="Flow_MA_1" sourceRef="Start_MA" targetRef="Task_Upload" />
+    <bpmn:sequenceFlow id="Flow_MA_5" name="повторная загрузка" sourceRef="Task_Correct" targetRef="Task_Upload" />
+    <bpmn:sequenceFlow id="Flow_MA_3" name="пакет отклонён" sourceRef="Gateway_WaitResult" targetRef="Event_Invalid" />
+    <bpmn:sequenceFlow id="Flow_MA_6" name="онбординг завершён" sourceRef="Gateway_WaitResult" targetRef="Event_Ready" />
+    <bpmn:sequenceFlow id="Flow_MA_4" sourceRef="Event_Invalid" targetRef="Task_Correct" />
+    <bpmn:sequenceFlow id="Flow_MA_7" sourceRef="Event_Ready" targetRef="End_MA" />
+    <bpmn:sequenceFlow id="Flow_0t8ry5s" sourceRef="Event_Invalid" targetRef="Gateway_WaitResult" />
+    <bpmn:userTask id="Task_Correct" name="Исправить пакет SKU" />
+    <bpmn:intermediateCatchEvent id="Event_Invalid" name="Получить ошибки валидации">
+      <bpmn:outgoing>Flow_0t8ry5s</bpmn:outgoing>
+      <bpmn:messageEventDefinition />
+    </bpmn:intermediateCatchEvent>
+  </bpmn:process>
+  <bpmn:process id="Process_Matching" isExecutable="false">
+    <bpmn:startEvent id="Start_Matching" name="Получен пакет SKU">
+      <bpmn:messageEventDefinition />
+    </bpmn:startEvent>
+    <bpmn:sendTask id="Task_CreateReview" name="Передать исключения и выборку 2%">
+      <bpmn:outgoing>Flow_M_WaitReview</bpmn:outgoing>
+    </bpmn:sendTask>
+    <bpmn:receiveTask id="Task_WaitReview" name="Получить решения товароведа">
+      <bpmn:incoming>Flow_M_WaitReview</bpmn:incoming>
+    </bpmn:receiveTask>
+    <bpmn:sequenceFlow id="Flow_M_1" sourceRef="Start_Matching" targetRef="Task_Validate" />
+    <bpmn:sequenceFlow id="Flow_M_2" sourceRef="Task_Validate" targetRef="Gateway_Valid" />
+    <bpmn:sequenceFlow id="Flow_M_Invalid" name="нет" sourceRef="Gateway_Valid" targetRef="Task_Reject" />
+    <bpmn:sequenceFlow id="Flow_M_RejectEnd" sourceRef="Task_Reject" targetRef="End_Rejected" />
+    <bpmn:sequenceFlow id="Flow_M_6" sourceRef="Task_AI_Wait" targetRef="Task_Rules" />
+    <bpmn:sequenceFlow id="Flow_M_7" sourceRef="Task_Rules" targetRef="Gateway_Review" />
+    <bpmn:sequenceFlow id="Flow_M_Review" name="да" sourceRef="Gateway_Review" targetRef="Task_CreateReview" />
+    <bpmn:sequenceFlow id="Flow_M_Reviewed" sourceRef="Task_WaitReview" targetRef="Gateway_Merge" />
+    <bpmn:sequenceFlow id="Flow_M_Auto" name="нет, автопринятие" sourceRef="Gateway_Review" targetRef="Gateway_Merge" />
+    <bpmn:sequenceFlow id="Flow_M_8" sourceRef="Gateway_Merge" targetRef="Task_Export" />
+    <bpmn:sequenceFlow id="Flow_M_10" sourceRef="Task_WaitSAP" targetRef="Task_Publish" />
+    <bpmn:sequenceFlow id="Flow_M_11" sourceRef="Task_Publish" targetRef="Task_WaitPOS" />
+    <bpmn:sequenceFlow id="Flow_M_12" sourceRef="Task_WaitPOS" targetRef="Task_Report" />
+    <bpmn:sequenceFlow id="Flow_M_13" sourceRef="Task_Report" targetRef="End_Matching" />
+    <bpmn:serviceTask id="Task_Validate" name="Проверить формат и безопасность" />
+    <bpmn:businessRuleTask id="Task_Rules" name="Применить оценку уверенности и другие правила" />
+    <bpmn:exclusiveGateway id="Gateway_Valid" name="Пакет валиден?" />
+    <bpmn:serviceTask id="Task_Normalize" name="Нормализовать названия, единицы и штрихкоды" />
+    <bpmn:serviceTask id="Task_Exact" name="Сопоставить по уникальному штрихкоду" />
+    <bpmn:sendTask id="Task_AI_Request" name="Запросить AI-маппинг оставшихся SKU" />
+    <bpmn:receiveTask id="Task_AI_Wait" name="Получить кандидатов и оценку уверенности" />
+    <bpmn:sequenceFlow id="Flow_M_Valid" name="да" sourceRef="Gateway_Valid" targetRef="Task_Normalize" />
+    <bpmn:sequenceFlow id="Flow_M_3" sourceRef="Task_Normalize" targetRef="Task_Exact" />
+    <bpmn:sequenceFlow id="Flow_M_4" sourceRef="Task_Exact" targetRef="Task_AI_Request" />
+    <bpmn:sequenceFlow id="Flow_M_5" sourceRef="Task_AI_Request" targetRef="Task_AI_Wait" />
+    <bpmn:sendTask id="Task_Reject" name="Отправить ошибки валидации" />
+    <bpmn:endEvent id="End_Rejected" name="Пакет отклонён" />
+    <bpmn:exclusiveGateway id="Gateway_Review" name="Нужна проверка?" />
+    <bpmn:exclusiveGateway id="Gateway_Merge" name="Маппинг подтверждён" />
+    <bpmn:sequenceFlow id="Flow_M_WaitReview" sourceRef="Task_CreateReview" targetRef="Task_WaitReview" />
+    <bpmn:endEvent id="End_Matching" name="Онбординг завершён" />
+    <bpmn:receiveTask id="Task_WaitPOS" name="Получить подтверждение публикации" />
+    <bpmn:sendTask id="Task_Publish" name="Передать каталог в Cloud POS" />
+    <bpmn:sendTask id="Task_Export" name="Передать маппинг в SAP" />
+    <bpmn:receiveTask id="Task_WaitSAP" name="Получить подтверждение SAP" />
+    <bpmn:serviceTask id="Task_Report" name="Сформировать отчёт и метрики качества" />
+    <bpmn:sequenceFlow id="Flow_M_9" sourceRef="Task_Export" targetRef="Task_WaitSAP" />
+  </bpmn:process>
+  <bpmn:process id="Process_AI" isExecutable="false">
+    <bpmn:startEvent id="Start_AI" name="Получен запрос">
+      <bpmn:messageEventDefinition />
+    </bpmn:startEvent>
+    <bpmn:serviceTask id="Task_AI_Match" name="Сформировать кандидатов, признаки и оценку уверенности" />
+    <bpmn:sendTask id="Task_AI_Response" name="Вернуть результаты AI-маппинга" />
+    <bpmn:endEvent id="End_AI" name="Ответ отправлен" />
+    <bpmn:sequenceFlow id="Flow_AI_1" sourceRef="Start_AI" targetRef="Task_AI_Match" />
+    <bpmn:sequenceFlow id="Flow_AI_2" sourceRef="Task_AI_Match" targetRef="Task_AI_Response" />
+    <bpmn:sequenceFlow id="Flow_AI_3" sourceRef="Task_AI_Response" targetRef="End_AI" />
+  </bpmn:process>
+  <bpmn:process id="Process_Data" isExecutable="false">
+    <bpmn:startEvent id="Start_Review" name="Получена очередь проверки">
+      <bpmn:messageEventDefinition />
+    </bpmn:startEvent>
+    <bpmn:userTask id="Task_Review" name="Проверить исключения и выборку 2%" />
+    <bpmn:exclusiveGateway id="Gateway_Quality" name="Ошибка выборки выше 1%?" />
+    <bpmn:sequenceFlow id="Flow_D_1" sourceRef="Start_Review" targetRef="Task_Review" />
+    <bpmn:sequenceFlow id="Flow_D_2" sourceRef="Task_Review" targetRef="Gateway_Quality" />
+    <bpmn:sequenceFlow id="Flow_D_Bad" name="да" sourceRef="Gateway_Quality" targetRef="Task_ExtendedReview" />
+    <bpmn:sequenceFlow id="Flow_D_Extended" sourceRef="Task_ExtendedReview" targetRef="Task_SendReview" />
+    <bpmn:sequenceFlow id="Flow_D_Good" name="нет" sourceRef="Gateway_Quality" targetRef="Task_SendReview" />
+    <bpmn:sendTask id="Task_SendReview" name="Отправить подтверждённые решения" />
+    <bpmn:sequenceFlow id="Flow_D_3" sourceRef="Task_SendReview" targetRef="End_Review" />
+    <bpmn:userTask id="Task_ExtendedReview" name="Провести расширенную проверку всего пакета" />
+    <bpmn:endEvent id="End_Review" name="Проверка завершена" />
+  </bpmn:process>
+  <bpmn:process id="Process_SAP" isExecutable="false">
+    <bpmn:sequenceFlow id="Flow_SAP_3" sourceRef="Task_SAP_Confirm" targetRef="End_SAP" />
+    <bpmn:sequenceFlow id="Flow_SAP_2" sourceRef="Task_SAP_Import" targetRef="Task_SAP_Confirm" />
+    <bpmn:sequenceFlow id="Flow_SAP_1" sourceRef="Start_SAP" targetRef="Task_SAP_Import" />
+    <bpmn:serviceTask id="Task_SAP_Import" name="Загрузить подтверждённый маппинг" />
+    <bpmn:endEvent id="End_SAP" name="Маппинг загружен" />
+    <bpmn:sendTask id="Task_SAP_Confirm" name="Подтвердить загрузку" />
+    <bpmn:startEvent id="Start_SAP" name="Получен маппинг">
+      <bpmn:messageEventDefinition />
+    </bpmn:startEvent>
+  </bpmn:process>
+  <bpmn:process id="Process_POS" isExecutable="false">
+    <bpmn:startEvent id="Start_POS" name="Получен каталог">
+      <bpmn:messageEventDefinition />
+    </bpmn:startEvent>
+    <bpmn:serviceTask id="Task_POS_Publish" name="Опубликовать каталог магазина" />
+    <bpmn:sequenceFlow id="Flow_POS_1" sourceRef="Start_POS" targetRef="Task_POS_Publish" />
+    <bpmn:sequenceFlow id="Flow_POS_2" sourceRef="Task_POS_Publish" targetRef="Task_POS_Confirm" />
+    <bpmn:sequenceFlow id="Flow_POS_3" sourceRef="Task_POS_Confirm" targetRef="End_POS" />
+    <bpmn:endEvent id="End_POS" name="Каталог опубликован" />
+    <bpmn:sendTask id="Task_POS_Confirm" name="Подтвердить публикацию" />
+  </bpmn:process>
+  <bpmndi:BPMNDiagram id="BPMNDiagram_Onboarding">
+    <bpmndi:BPMNPlane id="BPMNPlane_Onboarding" bpmnElement="Collaboration_Onboarding">
+      <bpmndi:BPMNShape id="Shape_Participant_MA" bpmnElement="Participant_MA" isHorizontal="true">
+        <dc:Bounds x="30" y="-92" width="2540" height="190" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Shape_Start_MA" bpmnElement="Start_MA">
+        <dc:Bounds x="150" y="10" width="36" height="36" />
+        <bpmndi:BPMNLabel>
+          <dc:Bounds x="136" y="46" width="65" height="27" />
+        </bpmndi:BPMNLabel>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Shape_Task_Upload" bpmnElement="Task_Upload">
+        <dc:Bounds x="220" y="-12" width="180" height="80" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Shape_Gateway_WaitResult" bpmnElement="Gateway_WaitResult">
+        <dc:Bounds x="1970" y="3" width="50" height="50" />
+        <bpmndi:BPMNLabel>
+          <dc:Bounds x="1970" y="53" width="50" height="27" />
+        </bpmndi:BPMNLabel>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Shape_Event_Ready" bpmnElement="Event_Ready">
+        <dc:Bounds x="2110" y="10" width="36" height="36" />
+        <bpmndi:BPMNLabel>
+          <dc:Bounds x="2083" y="-27.5" width="89" height="27" />
+        </bpmndi:BPMNLabel>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Shape_End_MA" bpmnElement="End_MA">
+        <dc:Bounds x="2250" y="10" width="36" height="36" />
+        <bpmndi:BPMNLabel>
+          <dc:Bounds x="2228" y="46" width="80" height="27" />
+        </bpmndi:BPMNLabel>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Shape_Task_Correct" bpmnElement="Task_Correct">
+        <dc:Bounds x="460" y="-80" width="160" height="80" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Shape_Event_Invalid" bpmnElement="Event_Invalid">
+        <dc:Bounds x="642" y="10" width="36" height="36" />
+        <bpmndi:BPMNLabel>
+          <dc:Bounds x="542" y="14.5" width="90" height="27" />
+        </bpmndi:BPMNLabel>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNEdge id="Edge_Flow_MA_1" bpmnElement="Flow_MA_1">
+        <di:waypoint x="186" y="28" />
+        <di:waypoint x="220" y="28" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Edge_Flow_MA_5" bpmnElement="Flow_MA_5">
+        <di:waypoint x="460" y="-40" />
+        <di:waypoint x="310" y="-40" />
+        <di:waypoint x="310" y="-12" />
+        <bpmndi:BPMNLabel>
+          <dc:Bounds x="358" y="-65" width="53" height="27" />
+        </bpmndi:BPMNLabel>
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Edge_Flow_MA_3" bpmnElement="Flow_MA_3">
+        <di:waypoint x="1970" y="28" />
+        <di:waypoint x="678" y="28" />
+        <bpmndi:BPMNLabel>
+          <dc:Bounds x="1285" y="3" width="78" height="14" />
+        </bpmndi:BPMNLabel>
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Edge_Flow_MA_6" bpmnElement="Flow_MA_6">
+        <di:waypoint x="2020" y="28" />
+        <di:waypoint x="2110" y="28" />
+        <bpmndi:BPMNLabel>
+          <dc:Bounds x="2038" y="3" width="54" height="27" />
+        </bpmndi:BPMNLabel>
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Edge_Flow_MA_4" bpmnElement="Flow_MA_4">
+        <di:waypoint x="660" y="8" />
+        <di:waypoint x="660" y="-40" />
+        <di:waypoint x="620" y="-40" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Edge_Flow_MA_7" bpmnElement="Flow_MA_7">
+        <di:waypoint x="2146" y="28" />
+        <di:waypoint x="2250" y="28" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_0t8ry5s_di" bpmnElement="Flow_0t8ry5s">
+        <di:waypoint x="678" y="28" />
+        <di:waypoint x="1970" y="28" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNShape id="Shape_Participant_Matching" bpmnElement="Participant_Matching" isHorizontal="true">
+        <dc:Bounds x="30" y="140" width="2540" height="300" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Shape_Start_Matching" bpmnElement="Start_Matching">
+        <dc:Bounds x="150" y="292" width="36" height="36" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Shape_Task_CreateReview" bpmnElement="Task_CreateReview">
+        <dc:Bounds x="1490" y="210" width="160" height="70" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Shape_Task_WaitReview" bpmnElement="Task_WaitReview">
+        <dc:Bounds x="1680" y="210" width="160" height="70" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Shape_Task_Validate" bpmnElement="Task_Validate">
+        <dc:Bounds x="220" y="311" width="150" height="80" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Shape_Task_Rules" bpmnElement="Task_Rules">
+        <dc:Bounds x="1230" y="311" width="160" height="80" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Shape_Gateway_Valid" bpmnElement="Gateway_Valid" isMarkerVisible="true">
+        <dc:Bounds x="400" y="326" width="50" height="50" />
+        <bpmndi:BPMNLabel>
+          <dc:Bounds x="384" y="376" width="82" height="14" />
+        </bpmndi:BPMNLabel>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Shape_Task_Normalize" bpmnElement="Task_Normalize">
+        <dc:Bounds x="490" y="311" width="170" height="80" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Shape_Task_Exact" bpmnElement="Task_Exact">
+        <dc:Bounds x="690" y="311" width="150" height="80" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Shape_Task_AI_Request" bpmnElement="Task_AI_Request">
+        <dc:Bounds x="870" y="311" width="150" height="80" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Shape_Task_AI_Wait" bpmnElement="Task_AI_Wait">
+        <dc:Bounds x="1050" y="311" width="150" height="80" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Shape_Task_Reject" bpmnElement="Task_Reject">
+        <dc:Bounds x="350" y="200" width="150" height="60" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Shape_End_Rejected" bpmnElement="End_Rejected">
+        <dc:Bounds x="557" y="212" width="36" height="36" />
+        <bpmndi:BPMNLabel>
+          <dc:Bounds x="535" y="188" width="80" height="14" />
+        </bpmndi:BPMNLabel>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Shape_Gateway_Review" bpmnElement="Gateway_Review" isMarkerVisible="true">
+        <dc:Bounds x="1425" y="326" width="50" height="50" />
+        <bpmndi:BPMNLabel>
+          <dc:Bounds x="1405" y="376" width="90" height="14" />
+        </bpmndi:BPMNLabel>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Shape_Gateway_Merge" bpmnElement="Gateway_Merge" isMarkerVisible="true">
+        <dc:Bounds x="1870" y="326" width="50" height="50" />
+        <bpmndi:BPMNLabel>
+          <dc:Bounds x="1861" y="376" width="68" height="27" />
+        </bpmndi:BPMNLabel>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Shape_End_Matching" bpmnElement="End_Matching">
+        <dc:Bounds x="2492" y="377" width="36" height="36" />
+        <bpmndi:BPMNLabel>
+          <dc:Bounds x="2482" y="413" width="56" height="27" />
+        </bpmndi:BPMNLabel>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Shape_Task_WaitPOS" bpmnElement="Task_WaitPOS">
+        <dc:Bounds x="2255" y="360" width="130" height="65" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Shape_Task_Publish" bpmnElement="Task_Publish">
+        <dc:Bounds x="2005" y="362" width="130" height="65" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Shape_Task_Export" bpmnElement="Task_Export">
+        <dc:Bounds x="1950" y="207" width="130" height="80" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Shape_Task_WaitSAP" bpmnElement="Task_WaitSAP">
+        <dc:Bounds x="2110" y="207" width="130" height="80" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Shape_Task_Report" bpmnElement="Task_Report">
+        <dc:Bounds x="2260" y="207" width="120" height="80" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNEdge id="Edge_Flow_M_1" bpmnElement="Flow_M_1">
+        <di:waypoint x="186" y="310" />
+        <di:waypoint x="203" y="310" />
+        <di:waypoint x="203" y="351" />
+        <di:waypoint x="220" y="351" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Edge_Flow_M_2" bpmnElement="Flow_M_2">
+        <di:waypoint x="370" y="351" />
+        <di:waypoint x="400" y="351" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Edge_Flow_M_Invalid" bpmnElement="Flow_M_Invalid">
+        <di:waypoint x="425" y="326" />
+        <di:waypoint x="425" y="260" />
+        <bpmndi:BPMNLabel>
+          <dc:Bounds x="400" y="293" width="17" height="14" />
+        </bpmndi:BPMNLabel>
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Edge_Flow_M_RejectEnd" bpmnElement="Flow_M_RejectEnd">
+        <di:waypoint x="500" y="230" />
+        <di:waypoint x="557" y="230" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Edge_Flow_M_6" bpmnElement="Flow_M_6">
+        <di:waypoint x="1200" y="351" />
+        <di:waypoint x="1230" y="351" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Edge_Flow_M_7" bpmnElement="Flow_M_7">
+        <di:waypoint x="1390" y="351" />
+        <di:waypoint x="1425" y="351" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Edge_Flow_M_Review" bpmnElement="Flow_M_Review">
+        <di:waypoint x="1450" y="326" />
+        <di:waypoint x="1450" y="245" />
+        <di:waypoint x="1490" y="245" />
+        <bpmndi:BPMNLabel>
+          <dc:Bounds x="1459" y="272" width="13" height="14" />
+        </bpmndi:BPMNLabel>
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Edge_Flow_M_WaitReview" bpmnElement="Flow_M_WaitReview">
+        <di:waypoint x="1650" y="245" />
+        <di:waypoint x="1680" y="245" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Edge_Flow_M_Reviewed" bpmnElement="Flow_M_Reviewed">
+        <di:waypoint x="1840" y="245" />
+        <di:waypoint x="1895" y="245" />
+        <di:waypoint x="1895" y="326" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Edge_Flow_M_Auto" bpmnElement="Flow_M_Auto">
+        <di:waypoint x="1475" y="351" />
+        <di:waypoint x="1870" y="351" />
+        <bpmndi:BPMNLabel>
+          <dc:Bounds x="1637" y="326" width="71" height="27" />
+        </bpmndi:BPMNLabel>
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Edge_Flow_M_8" bpmnElement="Flow_M_8">
+        <di:waypoint x="1895" y="326" />
+        <di:waypoint x="1895" y="247" />
+        <di:waypoint x="1950" y="247" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Edge_Flow_M_10" bpmnElement="Flow_M_10">
+        <di:waypoint x="2175" y="287" />
+        <di:waypoint x="2175" y="310" />
+        <di:waypoint x="2070" y="310" />
+        <di:waypoint x="2070" y="362" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Edge_Flow_M_11" bpmnElement="Flow_M_11">
+        <di:waypoint x="2135" y="393" />
+        <di:waypoint x="2255" y="393" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Edge_Flow_M_12" bpmnElement="Flow_M_12">
+        <di:waypoint x="2320" y="360" />
+        <di:waypoint x="2320" y="287" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Edge_Flow_M_13" bpmnElement="Flow_M_13">
+        <di:waypoint x="2380" y="247" />
+        <di:waypoint x="2509" y="247" />
+        <di:waypoint x="2509" y="377" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Edge_Flow_M_Valid" bpmnElement="Flow_M_Valid">
+        <di:waypoint x="450" y="351" />
+        <di:waypoint x="490" y="351" />
+        <bpmndi:BPMNLabel>
+          <dc:Bounds x="464" y="326" width="13" height="14" />
+        </bpmndi:BPMNLabel>
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Edge_Flow_M_3" bpmnElement="Flow_M_3">
+        <di:waypoint x="660" y="351" />
+        <di:waypoint x="690" y="351" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Edge_Flow_M_4" bpmnElement="Flow_M_4">
+        <di:waypoint x="840" y="351" />
+        <di:waypoint x="870" y="351" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Edge_Flow_M_5" bpmnElement="Flow_M_5">
+        <di:waypoint x="1020" y="351" />
+        <di:waypoint x="1050" y="351" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Edge_Flow_M_9" bpmnElement="Flow_M_9">
+        <di:waypoint x="2080" y="247" />
+        <di:waypoint x="2110" y="247" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNShape id="Shape_Participant_AI" bpmnElement="Participant_AI" isHorizontal="true">
+        <dc:Bounds x="30" y="460" width="2540" height="130" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Shape_Start_AI" bpmnElement="Start_AI">
+        <dc:Bounds x="870" y="507" width="36" height="36" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Shape_Task_AI_Match" bpmnElement="Task_AI_Match">
+        <dc:Bounds x="940" y="485" width="200" height="80" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Shape_Task_AI_Response" bpmnElement="Task_AI_Response">
+        <dc:Bounds x="1170" y="485" width="170" height="80" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Shape_End_AI" bpmnElement="End_AI">
+        <dc:Bounds x="1370" y="507" width="36" height="36" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNEdge id="Edge_Flow_AI_1" bpmnElement="Flow_AI_1">
+        <di:waypoint x="906" y="525" />
+        <di:waypoint x="940" y="525" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Edge_Flow_AI_2" bpmnElement="Flow_AI_2">
+        <di:waypoint x="1140" y="525" />
+        <di:waypoint x="1170" y="525" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Edge_Flow_AI_3" bpmnElement="Flow_AI_3">
+        <di:waypoint x="1340" y="525" />
+        <di:waypoint x="1370" y="525" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNShape id="Shape_Participant_Data" bpmnElement="Participant_Data" isHorizontal="true">
+        <dc:Bounds x="30" y="610" width="2540" height="190" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Shape_Start_Review" bpmnElement="Start_Review">
+        <dc:Bounds x="1490" y="672" width="36" height="36" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Shape_Task_Review" bpmnElement="Task_Review">
+        <dc:Bounds x="1560" y="650" width="180" height="80" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Shape_Gateway_Quality" bpmnElement="Gateway_Quality" isMarkerVisible="true">
+        <dc:Bounds x="1770" y="665" width="50" height="50" />
+        <bpmndi:BPMNLabel>
+          <dc:Bounds x="1751" y="627.5" width="88" height="27" />
+        </bpmndi:BPMNLabel>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Shape_Task_SendReview" bpmnElement="Task_SendReview">
+        <dc:Bounds x="2120" y="650" width="170" height="80" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Shape_Task_ExtendedReview" bpmnElement="Task_ExtendedReview">
+        <dc:Bounds x="1880" y="655" width="190" height="70" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Shape_End_Review" bpmnElement="End_Review">
+        <dc:Bounds x="2502" y="672" width="36" height="36" />
+        <bpmndi:BPMNLabel>
+          <dc:Bounds x="2492" y="708" width="57" height="27" />
+        </bpmndi:BPMNLabel>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNEdge id="Edge_Flow_D_1" bpmnElement="Flow_D_1">
+        <di:waypoint x="1526" y="690" />
+        <di:waypoint x="1560" y="690" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Edge_Flow_D_2" bpmnElement="Flow_D_2">
+        <di:waypoint x="1740" y="690" />
+        <di:waypoint x="1770" y="690" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Edge_Flow_D_Bad" bpmnElement="Flow_D_Bad">
+        <di:waypoint x="1820" y="690" />
+        <di:waypoint x="1880" y="690" />
+        <bpmndi:BPMNLabel>
+          <dc:Bounds x="1835" y="685" width="13" height="14" />
+        </bpmndi:BPMNLabel>
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Edge_Flow_D_Extended" bpmnElement="Flow_D_Extended">
+        <di:waypoint x="2070" y="690" />
+        <di:waypoint x="2120" y="690" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Edge_Flow_D_Good" bpmnElement="Flow_D_Good">
+        <di:waypoint x="1795" y="715" />
+        <di:waypoint x="1795" y="770" />
+        <di:waypoint x="2205" y="770" />
+        <di:waypoint x="2205" y="730" />
+        <bpmndi:BPMNLabel>
+          <dc:Bounds x="1992" y="745" width="17" height="14" />
+        </bpmndi:BPMNLabel>
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Edge_Flow_D_3" bpmnElement="Flow_D_3">
+        <di:waypoint x="2290" y="690" />
+        <di:waypoint x="2502" y="690" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNShape id="Shape_Participant_SAP" bpmnElement="Participant_SAP" isHorizontal="true">
+        <dc:Bounds x="30" y="820" width="2540" height="130" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Shape_Task_SAP_Import" bpmnElement="Task_SAP_Import">
+        <dc:Bounds x="2020" y="845" width="170" height="80" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Shape_End_SAP" bpmnElement="End_SAP">
+        <dc:Bounds x="2502" y="867" width="36" height="36" />
+        <bpmndi:BPMNLabel>
+          <dc:Bounds x="2497" y="903" width="47" height="27" />
+        </bpmndi:BPMNLabel>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Shape_Task_SAP_Confirm" bpmnElement="Task_SAP_Confirm">
+        <dc:Bounds x="2250" y="845" width="140" height="80" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Shape_Start_SAP" bpmnElement="Start_SAP">
+        <dc:Bounds x="1840" y="867" width="36" height="36" />
+        <bpmndi:BPMNLabel>
+          <dc:Bounds x="1814" y="903" width="89" height="14" />
+        </bpmndi:BPMNLabel>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNEdge id="Edge_Flow_SAP_1" bpmnElement="Flow_SAP_1">
+        <di:waypoint x="1876" y="885" />
+        <di:waypoint x="2020" y="885" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Edge_Flow_SAP_2" bpmnElement="Flow_SAP_2">
+        <di:waypoint x="2190" y="885" />
+        <di:waypoint x="2250" y="885" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Edge_Flow_SAP_3" bpmnElement="Flow_SAP_3">
+        <di:waypoint x="2390" y="885" />
+        <di:waypoint x="2502" y="885" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNShape id="Shape_Participant_POS" bpmnElement="Participant_POS" isHorizontal="true">
+        <dc:Bounds x="30" y="970" width="2540" height="130" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Shape_Start_POS" bpmnElement="Start_POS">
+        <dc:Bounds x="1950" y="1017" width="36" height="36" />
+        <bpmndi:BPMNLabel>
+          <dc:Bounds x="1925" y="1053" width="86" height="14" />
+        </bpmndi:BPMNLabel>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Shape_Task_POS_Publish" bpmnElement="Task_POS_Publish">
+        <dc:Bounds x="2020" y="995" width="170" height="80" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Shape_End_POS" bpmnElement="End_POS">
+        <dc:Bounds x="2502" y="1017" width="36" height="36" />
+        <bpmndi:BPMNLabel>
+          <dc:Bounds x="2487" y="1053" width="66" height="27" />
+        </bpmndi:BPMNLabel>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Shape_Task_POS_Confirm" bpmnElement="Task_POS_Confirm">
+        <dc:Bounds x="2290" y="995" width="140" height="80" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNEdge id="Edge_Flow_POS_1" bpmnElement="Flow_POS_1">
+        <di:waypoint x="1986" y="1035" />
+        <di:waypoint x="2020" y="1035" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Edge_Flow_POS_2" bpmnElement="Flow_POS_2">
+        <di:waypoint x="2190" y="1035" />
+        <di:waypoint x="2290" y="1035" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Edge_Flow_POS_3" bpmnElement="Flow_POS_3">
+        <di:waypoint x="2430" y="1035" />
+        <di:waypoint x="2502" y="1035" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Edge_Message_Upload" bpmnElement="Message_Upload">
+        <di:waypoint x="310" y="68" />
+        <di:waypoint x="310" y="230" />
+        <di:waypoint x="168" y="230" />
+        <di:waypoint x="168" y="292" />
+        <bpmndi:BPMNLabel>
+          <dc:Bounds x="211" y="205" width="56" height="14" />
+        </bpmndi:BPMNLabel>
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Edge_Message_Invalid" bpmnElement="Message_Invalid">
+        <di:waypoint x="425" y="200" />
+        <di:waypoint x="425" y="170" />
+        <di:waypoint x="660" y="170" />
+        <di:waypoint x="660" y="46" />
+        <bpmndi:BPMNLabel>
+          <dc:Bounds x="515" y="145" width="56" height="27" />
+        </bpmndi:BPMNLabel>
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Edge_Message_AI_Request" bpmnElement="Message_AI_Request">
+        <di:waypoint x="888" y="391" />
+        <di:waypoint x="888" y="507" />
+        <bpmndi:BPMNLabel>
+          <dc:Bounds x="859" y="434" width="79" height="27" />
+        </bpmndi:BPMNLabel>
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Edge_Message_AI_Response" bpmnElement="Message_AI_Response">
+        <di:waypoint x="1255" y="485" />
+        <di:waypoint x="1255" y="450" />
+        <di:waypoint x="1125" y="450" />
+        <di:waypoint x="1125" y="391" />
+        <bpmndi:BPMNLabel>
+          <dc:Bounds x="1157" y="425" width="66" height="27" />
+        </bpmndi:BPMNLabel>
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Edge_Message_Review" bpmnElement="Message_Review">
+        <di:waypoint x="1570" y="280" />
+        <di:waypoint x="1570" y="600" />
+        <di:waypoint x="1508" y="600" />
+        <di:waypoint x="1508" y="672" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Edge_Message_Approved" bpmnElement="Message_Approved">
+        <di:waypoint x="2205" y="650" />
+        <di:waypoint x="2205" y="600" />
+        <di:waypoint x="1760" y="600" />
+        <di:waypoint x="1760" y="280" />
+        <bpmndi:BPMNLabel>
+          <dc:Bounds x="1938" y="575" width="90" height="27" />
+        </bpmndi:BPMNLabel>
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Edge_Message_SAP_Request" bpmnElement="Message_SAP_Request">
+        <di:waypoint x="1958" y="286" />
+        <di:waypoint x="1958" y="450" />
+        <di:waypoint x="1858" y="450" />
+        <di:waypoint x="1858" y="867" />
+        <bpmndi:BPMNLabel>
+          <dc:Bounds x="1824" y="634" width="90" height="27" />
+        </bpmndi:BPMNLabel>
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Edge_Message_SAP_Response" bpmnElement="Message_SAP_Response">
+        <di:waypoint x="2320" y="845" />
+        <di:waypoint x="2320" y="540" />
+        <di:waypoint x="2210" y="540" />
+        <di:waypoint x="2210" y="287" />
+        <bpmndi:BPMNLabel>
+          <dc:Bounds x="2241" y="515" width="47" height="27" />
+        </bpmndi:BPMNLabel>
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Edge_Message_POS_Request" bpmnElement="Message_POS_Request">
+        <di:waypoint x="2090" y="427" />
+        <di:waypoint x="2090" y="810" />
+        <di:waypoint x="1968" y="810" />
+        <di:waypoint x="1968" y="1017" />
+        <bpmndi:BPMNLabel>
+          <dc:Bounds x="2071" y="601" width="60" height="27" />
+        </bpmndi:BPMNLabel>
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Edge_Message_POS_Response" bpmnElement="Message_POS_Response">
+        <di:waypoint x="2360" y="995" />
+        <di:waypoint x="2360" y="425" />
+        <bpmndi:BPMNLabel>
+          <dc:Bounds x="2316" y="696" width="66" height="27" />
+        </bpmndi:BPMNLabel>
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Edge_Message_Report" bpmnElement="Message_Report">
+        <di:waypoint x="2320" y="207" />
+        <di:waypoint x="2320" y="180" />
+        <di:waypoint x="2128" y="180" />
+        <di:waypoint x="2128" y="46" />
+        <bpmndi:BPMNLabel>
+          <dc:Bounds x="2196" y="155" width="56" height="27" />
+        </bpmndi:BPMNLabel>
+      </bpmndi:BPMNEdge>
+    </bpmndi:BPMNPlane>
+  </bpmndi:BPMNDiagram>
+</bpmn:definitions>
