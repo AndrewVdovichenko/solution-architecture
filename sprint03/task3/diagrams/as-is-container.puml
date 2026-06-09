@@ -1,0 +1,44 @@
+@startuml
+!include https://raw.githubusercontent.com/plantuml-stdlib/C4-PlantUML/master/C4_Container.puml
+
+LAYOUT_WITH_LEGEND()
+LAYOUT_LEFT_RIGHT()
+title VitaStore — исправленная C4 Container Diagram (AS-IS)
+
+Person(cashier, "Кассир", "Проводит продажи")
+Person(engineer, "Выездной ИТ-инженер", "Выгружает данные и обслуживает сервер")
+Person(merch, "Товаровед HQ", "Вручную сопоставляет SKU")
+
+System_Boundary(store, "Магазин") {
+  Container(pos, "POS App", "Windows / C#", "Толстый клиент с бизнес-логикой и драйверами")
+  ContainerDb(localDb, "Local DB", "MS SQL Server / PostgreSQL", "Чеки, цены и справочники магазина") <<SPOF>>
+  Container(fiscal, "Фискальный регистратор", "COM driver", "Печать фискального чека")
+  Container(terminal, "Банковский терминал", "USB / vendor driver", "Приём оплаты")
+}
+
+System_Boundary(hq, "Центральный офис") {
+  Container(sap, "SAP ERP", "On-premise", "Эталон товаров, цен, финансов и кадров")
+  Container(promo, "Promo Engine", "On-premise", "Централизованные промоакции")
+  Container(fulfillment, "Smart Fulfillment", "In-house", "Омниканальная логистика")
+  Container(mail, "Email + Excel", "Manual process", "Передача и ручной маппинг SKU") <<Bottleneck>>
+  Container(ftp, "FTP distribution", "XML / nightly batch", "Ночная рассылка прайс-листов")
+}
+
+Rel(cashier, pos, "Работает с кассой", "UI")
+Rel(pos, localDb, "Читает цены, пишет чеки", "Synchronous SQL")
+Rel(pos, fiscal, "Прямое управление", "COM driver")
+Rel(pos, terminal, "Инициирует оплату", "USB vendor driver")
+Rel(engineer, localDb, "Снимает CSV/XLS дамп", "Ручная операция")
+Rel(engineer, mail, "Отправляет выгрузку", "Email")
+Rel(merch, mail, "VLOOKUP и ручной маппинг", "Excel")
+Rel(mail, sap, "Загружает итоговый файл", "Manual upload")
+Rel(sap, ftp, "Формирует XML в 02:00", "Nightly batch")
+Rel(ftp, localDb, "Рассылает прайс-листы", "FTP / XML")
+
+legend right
+  <#FF0000> Wiki-связь POS -> SAP по real-time REST недостоверна.
+  <#FF0000> Фактический обмен: email/Excel + ночной FTP/XML.
+  <#FF7700> Local DB и прямые драйверы создают SPOF и дорогую поддержку.
+endlegend
+@enduml
+

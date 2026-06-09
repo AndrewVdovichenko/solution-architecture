@@ -1,0 +1,63 @@
+@startuml
+title VitaStore — карта бизнес-возможностей L1/L2
+
+skinparam componentStyle rectangle
+skinparam shadowing false
+skinparam defaultTextAlignment center
+skinparam legendBackgroundColor white
+
+top to bottom direction
+
+legend right
+  | Цвет | Описание |
+  | <#F8CECC> | Дорогие / проблемные зоны |
+  | <#D5E8D4> | Дифференциатор |
+  | <#E7E6E6> | Нейтральная возможность |
+endlegend
+
+rectangle "Продажи и операции магазина (L1)" as sales #E7E6E6 {
+  rectangle "POS, чеки и возвраты (L2)" as pos #F8CECC
+  rectangle "Инкассация (L2)" as cash #E7E6E6
+  rectangle "Печать ценников (L2)" as labels #F8CECC
+  rectangle "Локальный расчёт премий (L2)" as bonus #F8CECC
+}
+
+rectangle "Маркетинг и клиентский опыт (L1)" as marketing #E7E6E6 {
+  rectangle "Promo Engine (L2)" as promo #E7E6E6
+  rectangle "Лояльность (L2)" as loyalty #F8CECC
+  rectangle "Клиентские коммуникации (L2)" as crm #E7E6E6
+}
+
+rectangle "Ассортимент и цены (L1)" as assortment #E7E6E6 {
+  rectangle "Master Data / SKU (L2)" as mdm #E7E6E6
+  rectangle "Маппинг SKU при M&A (L2)" as matching #F8CECC
+  rectangle "Цены и прайс-листы (L2)" as pricing #F8CECC
+  rectangle "Правила ассортимента (L2)" as rules #D5E8D4
+}
+
+rectangle "Цепочка поставок (L1)" as supply #E7E6E6 {
+  rectangle "Приёмка товара (L2)" as receiving #F8CECC
+  rectangle "Управление запасами (L2)" as inventory #E7E6E6
+  rectangle "Smart Fulfillment (L2)" as fulfillment #D5E8D4
+  rectangle "Click & Collect (L2)" as clickcollect #D5E8D4
+}
+
+rectangle "Корпоративное управление (L1)" as corp #E7E6E6 {
+  rectangle "Финансы и бухгалтерия (L2)" as finance #E7E6E6
+  rectangle "HR и заработная плата (L2)" as hr #F8CECC
+  rectangle "Закупки и поставщики (L2)" as procurement #E7E6E6
+}
+
+rectangle "M&A и развитие сети (L1)" as ma #E7E6E6 {
+  rectangle "Онбординг магазина (L2)" as onboarding #F8CECC
+  rectangle "Миграция данных (L2)" as migration #F8CECC
+}
+
+rectangle "IT (L1)" as itops #E7E6E6 {
+  rectangle "Локальные серверы и БД (L2)" as localdb #F8CECC
+  rectangle "Поддержка устройств (L2)" as devices #F8CECC
+  rectangle "Интеграции (L2)" as integration #E7E6E6
+  rectangle "Мониторинг и Service Desk (L2)" as monitoring #E7E6E6
+}
+
+@enduml
