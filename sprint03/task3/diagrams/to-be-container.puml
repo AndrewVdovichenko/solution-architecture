@@ -1,0 +1,69 @@
+@startuml
+!include https://raw.githubusercontent.com/plantuml-stdlib/C4-PlantUML/master/C4_Container.puml
+
+LAYOUT_WITH_LEGEND()
+LAYOUT_LEFT_RIGHT()
+title VitaStore — C4 Container Diagram (TO-BE)
+
+Person(cashier, "Кассир", "Проводит продажи")
+Person(merch, "Товаровед", "Проверяет исключения SKU-маппинга")
+System_Ext(paymentProvider, "Payment Provider", "Эквайринг и авторизация платежей")
+
+System_Boundary(store, "Store Edge") {
+  Container(pos, "Cloud POS / PWA", "Web app on tablet", "Тонкий клиент; UI и offline service worker")
+  Container(edge, "Edge Device Gateway + HAL", "Managed lightweight app", "Единый локальный API, адаптеры устройств, transactional outbox")
+  ContainerDb(cache, "Encrypted Offline Store", "Embedded KV store", "Минимальный каталог и очередь неподтверждённых операций")
+  Container(fiscal, "Фискальный регистратор", "Vendor device", "Печать фискальных чеков")
+  Container(terminal, "Банковский терминал", "Vendor device", "Приём оплаты")
+}
+
+System_Boundary(cloud, "VitaStore Cloud Platform") {
+  Container(api, "API Gateway", "Managed API Gateway", "Аутентификация, маршрутизация, ограничения скорости, политики API")
+  Container(posBackend, "Cloud POS Backend", "SaaS / PaaS", "Продажи, возвраты, сессии касс")
+  Container(sync, "Store Sync Service", "PaaS", "Снапшоты каталога, идемпотентная синхронизация и сверка")
+  Container(payment, "Payment Gateway", "SaaS", "Единый контракт эквайринга")
+  Container(matching, "SKU Matching Service", "PaaS", "Нормализация, matching, confidence rules и review queue")
+  Container(ai, "AI Matching Service", "Managed AI", "Кандидаты SKU и оценка доверия")
+  Container(integration, "Integration Layer", "PaaS", "API и события для систем HQ")
+  ContainerQueue(bus, "Event Bus", "Managed broker", "Продажи, каталог, цены, промо, аудит")
+  ContainerDb(cloudDb, "Managed Operational DB", "Cloud DB", "Операционные данные POS и mapping audit")
+  Container(monitoring, "Observability & Device Management", "SaaS", "Метрики, логи, health и rollout edge")
+}
+
+System_Boundary(hq, "HQ Systems") {
+  Container(sap, "SAP ERP", "On-premise", "Источник истины: товары, цены, финансы и HR")
+  Container(promo, "Promo Engine", "In-house", "Правила промоакций")
+  Container(fulfillment, "Smart Fulfillment", "In-house", "Омниканальная логистика")
+}
+
+Rel(cashier, pos, "Проводит продажу", "UI")
+Rel(pos, api, "Онлайн-операции", "HTTPS / REST")
+Rel(pos, edge, "Печать чека и локальная оплата", "mTLS loopback API")
+Rel(edge, fiscal, "Вызывает адаптер ККТ", "Vendor driver")
+Rel(edge, terminal, "Вызывает адаптер терминала", "Vendor driver")
+Rel(edge, cache, "Читает каталог товаров, пишет transactional outbox", "Local encrypted access")
+Rel(edge, sync, "Синхронизирует очередь и каталог товаров", "HTTPS / idempotency keys")
+Rel(api, posBackend, "Маршрутизирует POS API", "HTTPS")
+Rel(posBackend, cloudDb, "Читает и пишет операции", "SQL")
+Rel(posBackend, bus, "Публикует события продаж", "Async")
+Rel(sync, cloudDb, "Сверяет операции", "SQL")
+Rel(sync, bus, "Получает изменения каталога", "Async")
+Rel(posBackend, payment, "Авторизация онлайн-платежа", "HTTPS")
+Rel(payment, paymentProvider, "Платёжные запросы", "HTTPS")
+Rel(merch, matching, "Проверяет исключения", "Web UI")
+Rel(matching, ai, "Запрашивает кандидатов", "API")
+Rel(matching, cloudDb, "Хранит аудит и решения", "SQL")
+Rel(matching, integration, "Публикует подтверждённый маппинг", "API / events")
+Rel(integration, sap, "Номенклатура, цены, продажи", "Controlled API")
+Rel(integration, promo, "Промо акции", "API / events")
+Rel(integration, fulfillment, "Остатки и заказы", "API / events")
+Rel(integration, bus, "Публикует изменения", "Async")
+Rel(monitoring, edge, "Health-check, конфигурация, развёртывание", "Secure management channel")
+
+legend right
+  <#00AA00> Постоянных локальных серверов и серверных БД нет.
+  <#00AA00> HAL изолирует Cloud POS от моделей оборудования.
+  <#FF7700> Offline Store содержит только минимальный snapshot и outbox.
+endlegend
+@enduml
+
