@@ -1,0 +1,105 @@
+@startuml
+!theme plain
+left to right direction
+
+skinparam packageStyle rectangle
+skinparam componentStyle rectangle
+skinparam shadowing false
+skinparam wrapWidth 180
+skinparam maxMessageSize 180
+
+actor "Клиент" as Customer
+actor "Оператор\nподдержки" as Support
+actor "Бизнес-\nпользователь" as Business
+
+cloud "Маркетплейсы" as Marketplaces
+cloud "Платежные\nпровайдеры" as PaymentProviders
+cloud "Службы доставки\nи склады" as DeliveryPartners
+cloud "BI / отчеты" as BI
+
+rectangle "RetailCore AS-IS" as RetailCore {
+  component "Web / Mobile\nканалы" as Channels
+
+  package "Java-монолит\nцентральный order контур" as Monolith {
+    component "Checkout / Order API" as OrderApi
+    component "Order Processing" as Processing
+    component "Pricing & Promo" as Pricing
+    component "Payment Orchestration" as Payment
+    component "Delivery Routing" as Routing
+    component "Status Management" as Status
+  }
+
+  database "Oracle\nоперационная БД + процедуры + справочники + staging" as Oracle
+
+  queue "Async / batch\nочереди, jobs, выгрузки" as Async
+
+  package "Вспомогательные сервисы" as Aux {
+    component ".NET integration service" as DotNet
+    component "Python analytics jobs" as PythonJobs
+  }
+
+  component "Admin / Support tools\nручные проверки и корректировки" as Admin
+}
+
+Customer --> Channels : оформить заказ\nпосмотреть статус
+Channels --> OrderApi : create/update order\nsync
+Marketplaces --> OrderApi : заказы и обновления\nпо отдельным веткам
+
+OrderApi --> Processing : создать заказ
+Processing --> Pricing : цена, скидки,\nпромо
+Processing --> Routing : выбрать доставку
+Processing --> Payment : создать платежную\nсессию
+Processing --> Status : изменить статус
+
+Pricing --> Oracle : правила, коэффициенты,\nlegacy promo package
+Processing --> Oracle : заказ, резерв,\nслужебные таблицы
+Routing --> Oracle : route rules,\nretry queue
+Payment --> Oracle : payment_session_id,\nтех. атрибуты
+Status --> Oracle : статусы, история,\nтех. состояния
+
+Payment --> PaymentProviders : sync create session
+Routing --> DeliveryPartners : sync / async\nрезервирование
+
+Processing --> Async : события, batch,\nвыгрузки
+Async --> DotNet : часть партнерских\nсценариев
+DotNet --> Oracle : shared / staging tables
+DotNet --> DeliveryPartners : интеграции\nпартнеров
+
+PythonJobs --> Oracle : прямые SQL,\nисторические выборки
+Async --> PythonJobs : batch данные
+BI --> Oracle : отчеты и витрины
+Business --> BI : управленческие\nпоказатели
+
+Support --> Admin : разбор обращений
+Admin --> Status : ручная проверка /\nкорректировка
+Admin --> Oracle : просмотр тех.\nатрибутов
+
+note right of Processing
+Смешение ответственности:
+создание заказа, статусы,
+интеграционные записи,
+синхронные вызовы.
+end note
+
+note bottom of Oracle
+Oracle является не только хранилищем:
+процедуры, legacy promo,
+справочники, staging,
+интеграционный слой.
+end note
+
+note right of Status
+Фактический жизненный цикл
+шире документации:
+manual review, pending,
+повторные оплаты,
+частичные отмены.
+end note
+
+note bottom of BI
+Нет единой канонической модели:
+разные витрины трактуют
+статусы, скидки и возвраты по-разному.
+end note
+
+@enduml
