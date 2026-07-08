@@ -1,0 +1,100 @@
+@startuml
+!theme plain
+left to right direction
+
+skinparam packageStyle rectangle
+skinparam componentStyle rectangle
+skinparam shadowing false
+skinparam wrapWidth 180
+skinparam maxMessageSize 180
+
+actor "Клиент" as Customer
+actor "Оператор\nподдержки" as Support
+actor "Бизнес-\nпользователь" as Business
+
+cloud "Маркетплейсы" as Marketplaces
+cloud "Платежные\nпровайдеры" as PaymentProviders
+cloud "Службы доставки\nи склады" as DeliveryPartners
+cloud "BI / отчеты" as BI
+
+rectangle "RetailCore TO-BE: первый этап" as RetailCore {
+  component "Web / Mobile\nканалы" as Channels
+
+  package "Java-монолит\nсохраняется для core order create" as Monolith {
+    component "Checkout / Order API" as OrderApi
+    component "Order Processing" as Processing
+    component "Payment Orchestration\nбез выноса на этапе 1" as Payment
+    component "Delivery Routing\nбез полного выноса" as Routing
+  }
+
+  database "Oracle\nоперационная БД + legacy logic" as Oracle
+  database "Order Outbox\ntransactional events" as Outbox
+  queue "Order Event Stream\nканонические события" as EventStream
+
+  package "Новый контур прозрачности" as Transparency {
+    component "Order Status\nRead Model" as ReadModel
+    component "Order History API\nдля поддержки" as HistoryApi
+    component "Analytics Data Mart\nпилотные отчеты" as DataMart
+    component "Observability\nlogs, metrics, traces" as Observability
+  }
+
+  package "Интеграционный контур" as Integration {
+    component "Logistics / Partner ACL\nединый контракт статуса" as ACL
+    component "Legacy .NET integration\nсохраняется частично" as DotNet
+  }
+}
+
+Customer --> Channels : оформить заказ\nпосмотреть статус
+Channels --> OrderApi : create/update order
+Marketplaces --> OrderApi : заказы и обновления
+
+OrderApi --> Processing : создать заказ
+Processing --> Oracle : текущая запись заказа\nи legacy logic
+Processing --> Outbox : записать событие\nв той же транзакционной границе
+Processing --> Payment : платежная сессия\nкак AS-IS
+Payment --> PaymentProviders : sync create session
+Processing --> Routing : выбрать доставку\nкак AS-IS
+
+Outbox --> EventStream : publish after commit
+EventStream --> ReadModel : order/status/payment/\ndelivery events
+ReadModel --> HistoryApi : история и причины\nотклонений
+Support --> HistoryApi : единая картина\nзаказа
+
+EventStream --> DataMart : события для\nпилотных отчетов
+Business --> BI : отчеты
+BI --> DataMart : новые витрины\nparallel run
+BI --> Oracle : legacy отчеты\nдо перевода
+
+Routing --> ACL : пилотные delivery\nrequests/status
+ACL --> DeliveryPartners : идемпотентные\nвызовы и статусы
+ACL --> EventStream : delivery status events
+DotNet --> DeliveryPartners : legacy\nинтеграции
+DotNet --> Oracle : legacy staging\nдо миграции
+
+Processing --> Observability : correlation id\nlogs metrics
+ACL --> Observability
+ReadModel --> Observability
+EventStream --> Observability
+Oracle --> Observability : DB metrics
+
+note bottom of Monolith
+На первом этапе монолит
+остается владельцем создания заказа.
+Изменения ограничены outbox,
+трассировкой и контрактами.
+end note
+
+note right of ReadModel
+Read model запускается
+в shadow/parallel run
+и сверяется с Oracle
+перед cutover поддержки.
+end note
+
+note bottom of ACL
+ACL не заменяет всю маршрутизацию.
+Он изолирует пилотные интеграции,
+retry и idempotency.
+end note
+
+@enduml
