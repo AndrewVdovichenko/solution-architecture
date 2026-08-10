@@ -1,0 +1,26 @@
+@startuml
+!include https://raw.githubusercontent.com/plantuml-stdlib/C4-PlantUML/master/C4_Context.puml
+
+LAYOUT_WITH_LEGEND()
+LAYOUT_LEFT_RIGHT()
+title Здоровье+ — C4 Level 1, снижение нагрузки на 1С
+
+Person(patient, "Пациент", "Проверяет и привязывает полис в приложении")
+System(mobile, "Мобильное приложение", "Канал пациента")
+System(gateway, "Mobile API Gateway", "Аутентификация, проверка токена, квоты и маршрутизация")
+System(bff, "Mobile BFF", "Мобильный контракт и композиция ответов")
+System(policy, "Policy Verification Service", "Обслуживает проверки из локальной read model")
+System(integration, "1С Policy Adapter", "Синхронизация, rate limit, Circuit Breaker и преобразование контракта")
+System(broker, "Event Broker", "Команды изменения и события результата")
+System_Ext(oneC, "1С Полисы", "Эталонная система полисов ДМС; не более 20 RPS от адаптера")
+
+Rel(patient, mobile, "Работает с полисом", "Mobile UI")
+Rel(mobile, gateway, "Проверяет или привязывает полис", "HTTPS / REST")
+Rel(gateway, bff, "Передаёт проверенный запрос", "mTLS / REST")
+Rel(bff, policy, "Читает локальное состояние", "HTTPS / REST")
+Rel(policy, broker, "Публикует команду изменения", "Async / outbox")
+Rel(broker, integration, "Доставляет команды", "Async / inbox")
+Rel(integration, oneC, "Применяет команды и получает изменения пакетами", "1С HTTP / <= 20 RPS")
+Rel(integration, broker, "Публикует результат и изменения", "Async / outbox")
+Rel(broker, policy, "Обновляет read model", "Async / idempotent consumer")
+@enduml
