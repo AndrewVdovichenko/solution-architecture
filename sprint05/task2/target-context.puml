@@ -1,0 +1,46 @@
+@startuml
+!include https://raw.githubusercontent.com/plantuml-stdlib/C4-PlantUML/master/C4_Context.puml
+
+LAYOUT_WITH_LEGEND()
+LAYOUT_LEFT_RIGHT()
+title Здоровье+ — C4 Level 1, целевая интеграционная архитектура
+
+Person(patient, "Пациент", "Записывается, оплачивает и получает результаты анализов")
+Person(doctor, "Врач", "Управляет расписанием и просматривает данные пациентов")
+Person(lab, "Лаборант", "Контролирует результаты анализов в LIS")
+
+System(mobile, "Мобильное приложение [MVP]", "Новый цифровой канал пациента")
+System(portal, "Веб-портал", "Существующий интерфейс пациентов, врачей и администраторов")
+System(gateway, "Mobile API Gateway [MVP]", "OAuth, WAF, rate limiting, проверка токенов и маршрутизация")
+System(bff, "Mobile BFF [MVP]", "Мобильный API, композиция, SAGA, legacy-адаптеры, события и read models")
+
+System_Ext(schedule, "Расписание", "REST API + PostgreSQL")
+System_Ext(crm, "CRM", "Микросервис на Java, REST")
+System_Ext(lis, "LIS (лабораторная)", "SOAP / FTP, REST API")
+System_Ext(oneC, "1С: Полисы", "HTTP-шлюз")
+System_Ext(payment, "Платёжный шлюз", "Внешний REST API")
+System_Ext(notifications, "Уведомления", "RabbitMQ, Email, SMS и push")
+
+Rel(patient, mobile, "Использует новый канал", "Mobile UI")
+Rel(patient, portal, "Записывается и просматривает данные", "HTTPS")
+Rel(doctor, portal, "Управляет расписанием, просматривает карточку и анализы", "HTTPS")
+Rel(lab, lis, "Просматривает результаты", "UI / API, только чтение")
+
+Rel(portal, schedule, "Работает со слотами и записями", "REST")
+Rel(portal, crm, "Читает и синхронизирует данные пациента", "REST")
+Rel(portal, oneC, "Проверяет полис", "HTTP")
+Rel(portal, payment, "Проводит оплату", "REST")
+Rel(portal, notifications, "Отправляет команды уведомлений", "AMQP")
+Rel(lis, crm, "Передаёт результаты анализов", "REST API / JSON")
+
+Rel(mobile, gateway, "Выполняет вход и вызывает мобильный API", "HTTPS / REST + Bearer token")
+Rel(gateway, bff, "Передаёт проверенный запрос и исходный токен", "mTLS / REST")
+Rel(bff, schedule, "Читает слоты, резервирует и подтверждает запись", "REST + Idempotency-Key")
+Rel(bff, crm, "Получает профиль и медицинские данные", "REST")
+Rel(bff, lis, "Резервирует исследование", "REST adapter")
+Rel(lis, bff, "Передаёт версии результатов", "REST polling / durable events")
+Rel(bff, oneC, "Проверяет и синхронизирует полисы", "1С HTTP adapter")
+Rel(bff, payment, "Платит, сверяет статус и возвращает", "HTTPS / REST")
+Rel(bff, notifications, "Передаёт уведомления асинхронно", "Durable events")
+Rel(notifications, patient, "Доставляет подтверждения и статусы", "Push / SMS / Email")
+@enduml
