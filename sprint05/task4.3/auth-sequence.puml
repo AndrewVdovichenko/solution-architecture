@@ -1,0 +1,31 @@
+@startuml
+title OAuth 2.1 / OIDC Authorization Code with PKCE через Mobile API Gateway
+
+actor "Пациент" as Patient
+participant "Mobile App" as App
+participant "System Browser" as Browser
+participant "Mobile API Gateway" as Gateway
+participant "Mobile BFF" as BFF
+
+Patient -> App: Войти
+App -> App: Создать code_verifier,\ncode_challenge и state
+App -> Browser: Открыть /authorize\nchallenge, state, redirect_uri
+Browser -> Gateway: HTTPS /authorize
+Gateway -> Patient: Аутентификация, при риске MFA
+Patient -> Gateway: Подтвердить вход
+Gateway --> Browser: Redirect с authorization code и state
+Browser --> App: Universal/App Link
+App -> App: Проверить state
+App -> Gateway: POST /oauth/token\ncode + code_verifier
+Gateway -> Gateway: Проверить code_verifier,\nвыпустить токены и сохранить сессию
+Gateway --> App: Access token 5 минут\nRotating refresh token 30 дней
+App -> App: Refresh token → Keychain/Keystore
+App -> Gateway: API request\nAuthorization: Bearer access_token
+Gateway -> Gateway: Проверить signature, iss, aud,\nexp, scope, session и rate limit
+Gateway -> Gateway: Удалить внешние trusted headers
+Gateway -> BFF: Запрос + исходный token\nпо mTLS
+BFF -> BFF: Повторно проверить token,\nполучить patientId из sub
+BFF --> Gateway: Ответ только с данными пациента
+Gateway --> App: HTTPS response
+App --> Patient: Показать данные
+@enduml

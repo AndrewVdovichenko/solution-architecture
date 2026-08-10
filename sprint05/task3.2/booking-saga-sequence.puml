@@ -1,0 +1,52 @@
+@startuml
+title Успешная SAGA записи с оплатой и лабораторным резервом
+
+actor "Пациент" as Patient
+participant "Mobile App" as App
+participant "Mobile API Gateway" as Gateway
+participant "Mobile BFF" as BFF
+database "Idempotency Store" as Idem
+participant "Booking Orchestrator" as Saga
+participant "Policy Verification" as Policy
+participant "Schedule" as Schedule
+participant "LIS Adapter" as LIS
+participant "Payment Adapter" as Pay
+participant "Payment Gateway" as Provider
+queue "Event Broker" as Broker
+participant "Notification Service" as Notify
+
+Patient -> App: Подтвердить запись и оплату
+App -> Gateway: POST /api/v1/booking-operations\nAuthorization, Idempotency-Key
+Gateway -> Gateway: Проверить токен, rate limit и тело
+Gateway -> BFF: Запрос + исходный token\nпо mTLS
+BFF -> BFF: Повторно проверить token,\nполучить patientId из sub
+BFF -> Saga: Создать операцию(patientId, request, key)
+Saga -> Idem: INSERT key, requestHash, sagaId, STARTED
+Idem --> Saga: Состояние создано
+Saga -> Policy: Проверить полис(patientId)
+Policy --> Saga: VALID
+Saga -> Idem: Сохранить POLICY_VERIFIED
+Saga -> Schedule: Удержать слот(commandId, TTL=15m)
+Schedule --> Saga: appointmentHoldId
+Saga -> Idem: Сохранить DOCTOR_HELD
+Saga -> LIS: Удержать слот анализа(commandId, TTL=15m)
+LIS --> Saga: labReservationId
+Saga -> Idem: Сохранить LAB_HELD
+Saga -> Pay: Оплатить(merchantPaymentId=sagaId)
+Pay -> Provider: POST payment с idempotency key
+Provider --> Pay: PAID, providerPaymentId
+Pay --> Saga: PAID
+Saga -> Idem: Сохранить PAYMENT_COMPLETED
+Saga -> Schedule: Подтвердить appointmentHoldId
+Schedule --> Saga: CONFIRMED
+Saga -> LIS: Подтвердить labReservationId
+LIS --> Saga: CONFIRMED
+Saga -> Idem: Сохранить COMPLETED и HTTP-ответ
+Saga -> Broker: AppointmentConfirmed (outbox)
+Saga --> BFF: 201 Created, appointmentId
+BFF --> Gateway: Мобильный HTTP-ответ
+Gateway --> App: 201 Created
+App --> Patient: Показать подтверждение
+Broker -> Notify: AppointmentConfirmed
+Notify -> Patient: Push/SMS подтверждение
+@enduml

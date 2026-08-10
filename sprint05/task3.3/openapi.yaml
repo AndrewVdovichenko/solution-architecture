@@ -1,0 +1,165 @@
+openapi: 3.0.3
+info:
+  title: Health Plus Mobile API
+  version: 1.0.0
+  description: API мобильного приложения сети клиник «Здоровье+».
+servers:
+  - url: https://api.healthplus.example.com
+paths:
+  /api/v1/appointments:
+    get:
+      summary: Получить предстоящие записи текущего пациента
+      operationId: getAppointments
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: status
+          in: query
+          required: false
+          description: Фильтр предстоящих записей.
+          schema:
+            type: string
+            enum: [upcoming]
+            default: upcoming
+        - name: limit
+          in: query
+          required: false
+          description: Максимальное количество записей в ответе.
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 20
+        - name: offset
+          in: query
+          required: false
+          description: Количество записей, пропускаемых от начала выборки.
+          schema:
+            type: integer
+            minimum: 0
+            default: 0
+      responses:
+        '200':
+          description: Список предстоящих записей текущего пациента.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AppointmentsPage'
+              example:
+                items:
+                  - id: apt_01J9T2R7F9K3Y4Q6P8W1
+                    status: confirmed
+                    startAt: '2026-08-14T09:30:00+05:00'
+                    durationMinutes: 30
+                    doctor:
+                      id: doc_1024
+                      fullName: Анна Сергеевна Иванова
+                      specialty: Терапевт
+                    clinic:
+                      id: clinic_ekb_01
+                      name: Здоровье+ Екатеринбург
+                      address: ул. Примерная, 10
+                pagination:
+                  limit: 20
+                  offset: 0
+                  total: 1
+        '401':
+          description: Access token отсутствует, истёк или недействителен.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                code: UNAUTHORIZED
+                message: Требуется действительный access token.
+                traceId: 9f1d2b7c0a4e43c1
+        '500':
+          description: Непредвиденная внутренняя ошибка.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                code: INTERNAL_ERROR
+                message: Не удалось получить записи. Повторите запрос позднее.
+                traceId: 3aef84d21ca249f7
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: OAuth 2.1 access token, передаваемый в заголовке Authorization.
+  schemas:
+    AppointmentsPage:
+      type: object
+      required: [items, pagination]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/Appointment'
+        pagination:
+          $ref: '#/components/schemas/Pagination'
+    Appointment:
+      type: object
+      required: [id, status, startAt, durationMinutes, doctor, clinic]
+      properties:
+        id:
+          type: string
+        status:
+          type: string
+          enum: [pending_payment, confirmed]
+        startAt:
+          type: string
+          format: date-time
+        durationMinutes:
+          type: integer
+          minimum: 1
+        doctor:
+          $ref: '#/components/schemas/Doctor'
+        clinic:
+          $ref: '#/components/schemas/Clinic'
+    Doctor:
+      type: object
+      required: [id, fullName, specialty]
+      properties:
+        id:
+          type: string
+        fullName:
+          type: string
+        specialty:
+          type: string
+    Clinic:
+      type: object
+      required: [id, name, address]
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        address:
+          type: string
+    Pagination:
+      type: object
+      required: [limit, offset, total]
+      properties:
+        limit:
+          type: integer
+          minimum: 1
+        offset:
+          type: integer
+          minimum: 0
+        total:
+          type: integer
+          minimum: 0
+    Error:
+      type: object
+      required: [code, message, traceId]
+      properties:
+        code:
+          type: string
+        message:
+          type: string
+        traceId:
+          type: string
