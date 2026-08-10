@@ -1,0 +1,28 @@
+@startuml
+title Поставка результата анализа из LIS в мобильное приложение
+
+start
+:LIS фиксирует resultId и version;
+:LIS Adapter запрашивает изменения\nпо watermark с перекрытием 5 минут;
+if (Контракт результата корректен?) then (да)
+  :Атомарно записать inbox и outbox;
+  :Outbox Publisher публикует\nLabResultPublished;
+  :Event Broker сохраняет событие\nс retention 7 дней;
+  :Lab Results Service проверяет\nresultId + version;
+  if (Версия уже обработана?) then (да)
+    :Подтвердить offset\nбез повторного обновления;
+  else (нет)
+    :Обновить read model;
+    :Опубликовать LabResultAvailable;
+    fork
+      :Notification Service отправляет\npush без медицинских данных;
+    fork again
+      :Mobile BFF читает результат;\nAPI Gateway возвращает его приложению;
+    end fork
+  endif
+else (нет)
+  :Поместить событие в DLQ\nи создать алерт;
+endif
+:Продвинуть watermark после\nфиксации всей страницы;
+stop
+@enduml
