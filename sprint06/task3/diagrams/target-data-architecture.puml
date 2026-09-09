@@ -1,0 +1,68 @@
+@startuml
+title FinUnion — целевая data architecture, 12 месяцев
+left to right direction
+skinparam componentStyle rectangle
+
+package "Operational / Systems of Record" {
+  component "FU CRM" as CRM
+  component "FU Core" as CORE
+  component "FU Cards" as CARDS
+  component "FU Loans" as LOANS
+  component "Customer MDM" as CMDM
+  component "Product & Reference MDM" as RMDM
+}
+package "Integration" {
+  component "API Gateway / ESB" as API
+  queue "Kafka + Schema Registry" as KAFKA
+  component "CDC / Outbox" as CDC
+}
+package "Data Platform" {
+  database "Object Storage" as OBJ
+  database "Iceberg Lakehouse\nbronze / silver / gold" as LAKE
+  database "PostgreSQL DWH\nfacts / dimensions / marts" as DWH
+  component "Airflow" as AIR
+  component "dbt / SQL transformations" as DBT
+  component "Streaming processing" as STREAM
+  component "Trino" as TRINO
+}
+package "Governance & Security" {
+  component "DataHub\ncatalog / lineage / owners / DQ" as DH
+  component "IAM / KMS / masking / audit" as SEC
+}
+package "Consumers" {
+  component "BI" as BI
+  component "Risk / Antifraud" as RISK
+  actor Regulator
+  component "Data Science" as DS
+}
+
+CRM --> API
+CORE --> CDC
+CARDS --> CDC
+LOANS --> CDC
+CMDM --> KAFKA : Golden party events
+RMDM --> KAFKA : Reference versions
+CDC --> KAFKA
+API --> CRM
+KAFKA --> OBJ : Immutable landing
+OBJ --> LAKE
+KAFKA --> STREAM
+STREAM --> LAKE
+AIR --> LAKE : Batch orchestration
+AIR --> DWH
+DBT --> DWH
+LAKE --> DWH : Certified inputs
+LAKE --> TRINO
+DWH --> BI
+DWH --> Regulator
+TRINO --> RISK
+TRINO --> DS
+DH ..> CMDM
+DH ..> KAFKA
+DH ..> LAKE
+DH ..> DWH
+SEC ..> CRM
+SEC ..> KAFKA
+SEC ..> LAKE
+SEC ..> DWH
+@enduml

@@ -1,0 +1,91 @@
+@startuml
+title Transaction Analytics — Star Schema
+hide methods
+skinparam linetype ortho
+
+entity fact_transaction {
+  * transaction_sk
+  --
+  customer_sk
+  account_sk
+  product_sk
+  date_sk
+  time_sk
+  currency_sk
+  channel_sk
+  branch_sk
+  status_sk
+  amount
+  account_amount
+  fee_amount
+  source_system
+  source_record_id
+}
+entity dim_customer {
+  * customer_sk
+  --
+  global_customer_id
+  segment
+  valid_from
+  valid_to
+}
+entity dim_account {
+  * account_sk
+  --
+  global_account_id
+  type
+  status
+  valid_from
+  valid_to
+}
+entity dim_product {
+  * product_sk
+  --
+  product_code
+  type
+  tariff_version
+}
+entity dim_date {
+  * date_sk
+  --
+  date
+  business_period
+}
+entity dim_time {
+  * time_sk
+  --
+  hour
+  minute
+}
+entity dim_currency {
+  * currency_sk
+  --
+  iso_code
+}
+entity dim_channel {
+  * channel_sk
+  --
+  channel_code
+}
+entity dim_branch {
+  * branch_sk
+  --
+  branch_code
+  region
+}
+entity dim_transaction_status {
+  * status_sk
+  --
+  canonical_status
+}
+
+dim_customer ||--o{ fact_transaction
+dim_account ||--o{ fact_transaction
+dim_product ||--o{ fact_transaction
+dim_date ||--o{ fact_transaction
+dim_time ||--o{ fact_transaction
+dim_currency ||--o{ fact_transaction
+dim_channel ||--o{ fact_transaction
+dim_branch ||--o{ fact_transaction
+dim_transaction_status ||--o{ fact_transaction
+@enduml
