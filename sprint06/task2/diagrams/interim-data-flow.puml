@@ -1,0 +1,58 @@
+@startuml
+title FinUnion + RetailBank — DFD Level 0, состояние через 3 месяца
+left to right direction
+skinparam componentStyle rectangle
+
+actor Client
+actor Employee
+actor Analyst
+actor Regulator
+
+rectangle "Operational systems" {
+  component "FU CRM" as FUCRM
+  component "RB CRM" as RBCRM
+  component "FU Core" as FUCore
+  component "RB Core" as RBCore
+  component "FU Cards" as FUCards
+  component "RB Cards" as RBCards
+  component "FU Loans" as FULoans
+  component "RB Loans" as RBLoans
+}
+component "Customer MDM\nmatch / merge / validate" as MDM
+component "Product & Reference Hub\nmap / validate" as REF
+queue "Integration Layer\nAPI + events + CDC" as INT
+database "Unified DWH\nvalidate / aggregate" as DWH
+component "BI" as BI
+component "DataHub\ncatalog + lineage" as DH
+
+Client --> FUCRM : Create/Update customer
+Client --> RBCRM : Create/Update customer
+Employee --> FUCRM
+Employee --> RBCRM
+FUCRM --> MDM : Create/Update/Delete\nValidate/Deduplicate
+RBCRM --> MDM : Create/Update/Delete\nValidate/Deduplicate
+MDM --> INT : Golden ID/events
+INT --> FUCRM : Enrich
+INT --> RBCRM : Enrich
+REF --> INT : Product/reference versions
+INT --> FUCore
+INT --> RBCore
+INT --> FUCards
+INT --> RBCards
+INT --> FULoans
+INT --> RBLoans
+FUCore --> INT : Accounts/transactions CDC
+RBCore --> INT : Accounts/transactions CDC
+FUCards --> INT : Card events
+RBCards --> INT : Card events
+FULoans --> INT : Loan snapshots/CDC
+RBLoans --> INT : Loan snapshots/CDC
+INT --> DWH : Validate/Create/Update
+MDM --> DWH : Customer dimension
+DWH --> BI : Read/Aggregate
+Analyst --> BI : Read
+DWH --> Regulator : Approved reports
+MDM ..> DH : Metadata/DQ
+INT ..> DH : Schemas/lineage
+DWH ..> DH : Models/lineage
+@enduml
