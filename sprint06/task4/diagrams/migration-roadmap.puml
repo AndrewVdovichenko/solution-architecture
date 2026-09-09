@@ -1,0 +1,38 @@
+@startuml
+title FinUnion Data Merger — roadmap 12 месяцев
+left to right direction
+skinparam componentStyle rectangle
+skinparam linetype ortho
+
+rectangle "1. Discovery\nНедели 1–2" as D
+rectangle "2. Foundation\nНедели 2–5" as F
+rectangle "3. Customer Identity\nНедели 3–8" as C
+rectangle "4. Unified Reporting\nНедели 5–12" as R
+rectangle "Gate M3\nGlobal ID + DWH/BI" as G3 #LightGreen
+rectangle "5. Reference Harmonization\nМесяцы 3–5" as H
+rectangle "6. Lakehouse & Events\nМесяцы 4–7" as L
+rectangle "Gate M6\nReference MDM + Lakehouse" as G6 #LightGreen
+rectangle "7. Domain Waves\nМесяцы 6–11" as W
+rectangle "Gate M9\nParallel run" as G9 #LightGreen
+rectangle "8. Decommission\nМесяцы 10–12" as X
+rectangle "Gate M12\nExit criteria" as G12 #LightGreen
+
+D --> F
+F --> C
+F --> R
+C --> G3
+R --> G3
+G3 --> H
+G3 --> L
+H --> G6
+L --> G6
+G6 --> W
+W --> G9
+G9 --> X
+X --> G12
+
+note bottom of W
+  CRM/обращения → продукты →
+  кредиты → карты → счета/Core
+end note
+@enduml
