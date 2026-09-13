@@ -1,0 +1,128 @@
+@startuml
+title FinUnion — логическая модель ключевых данных
+hide methods
+hide stereotypes
+skinparam linetype ortho
+
+entity Customer {
+  * customer_id
+  --
+  party_type
+  legal_name
+  kyc_status
+}
+entity CustomerIdentifier {
+  * identifier_id
+  --
+  source_system
+  source_record_id
+  confidence
+}
+entity Consent {
+  * consent_id
+  --
+  type
+  status
+  valid_to
+}
+entity Segment {
+  * segment_id
+  --
+  rule_version
+  valid_from
+  valid_to
+}
+entity Interaction {
+  * interaction_id
+  --
+  channel
+  topic
+  status
+}
+entity Contract {
+  * contract_id
+  --
+  number
+  status
+  valid_from
+}
+entity Product {
+  * product_id
+  --
+  type
+  version
+}
+entity Tariff {
+  * tariff_id
+  --
+  version
+  valid_from
+}
+entity Account {
+  * account_id
+  --
+  number
+  currency
+  status
+}
+entity Card {
+  * card_id
+  --
+  pan_token
+  status
+}
+entity Loan {
+  * loan_id
+  --
+  principal
+  outstanding
+  status
+}
+entity Payment {
+  * payment_id
+  --
+  amount
+  currency
+  status
+}
+entity Transaction {
+  * transaction_id
+  --
+  amount
+  business_date
+  status
+}
+entity Branch {
+  * branch_id
+  --
+  region
+  status
+}
+entity ReferenceValue {
+  * reference_id
+  --
+  code
+  version
+}
+
+Customer ||--o{ CustomerIdentifier
+Customer ||--o{ Consent
+Customer }o--o{ Segment
+Customer ||--o{ Interaction
+Customer }o--o{ Contract
+Contract }o--|| Product
+Contract }o--|| Tariff
+Contract ||--o{ Account
+Contract ||--o{ Card
+Contract ||--o{ Loan
+Account ||--o{ Transaction
+Account }o--o{ Payment
+Payment ||--o{ Transaction
+Card ||--o{ Transaction
+Loan ||--o{ Payment
+Interaction }o--o| Product
+Branch ||--o{ Interaction
+ReferenceValue ..> Customer
+ReferenceValue ..> Contract
+ReferenceValue ..> Transaction
+@enduml
