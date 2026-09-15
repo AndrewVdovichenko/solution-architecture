@@ -1,0 +1,35 @@
+@startuml C4_Extraction_Container
+!include https://raw.githubusercontent.com/plantuml-stdlib/C4-PlantUML/1e785da2dbb84bf1c5ecf7e0692154a5e2a0de0f/C4_Container.puml
+
+title RetailBank — извлечение финансовых показателей, C4 Container
+AddRelTag("trust", $lineStyle = DashedLine(), $legendText = "Пронумерованная граница доверия")
+
+Person(underwriter, "Андеррайтер", "Подтверждает финансовую карточку")
+System_Ext(loan, "Система кредитных заявок", "Заявка и подтверждённая карточка")
+
+System_Boundary(bank, "Контролируемый контур RetailBank") {
+  Container(ocrStore, "Банковский OCR Store", "Внутренняя банковская система", "Текст, layout и оригинал; контур банка не покидается")
+  Container(orchestrator, "Extraction Orchestrator", "Application service", "Разбивает пакет, управляет повторами")
+  Container(classifier, "Form Classifier", "Model/rules", "Определяет форму и применимую схему")
+  Container(extractor, "Field Extraction Service", "Self-hosted document model/LLM", "Структурированный черновик с provenance")
+  Container(schema, "Schema & Accounting Validator", "Deterministic code", "JSON Schema, периоды, единицы, итоги и противоречия")
+  Container(review, "Financial Review UI", "Web UI", "Источник рядом со значением")
+  ContainerDb(cards, "Financial Draft Store", "Database", "Версии, статусы и audit trail")
+  Container(obs, "Audit & Monitoring", "Metrics/logs", "Качество полей, drift и доступы")
+}
+
+Rel(ocrStore, orchestrator, "TB-E1: недоверенный текст/документ", $tags="trust")
+Rel(orchestrator, classifier, "Страницы/метаданные")
+Rel(classifier, extractor, "Форма и допустимая схема")
+Rel(extractor, schema, "TB-E2: недоверенный модельный JSON", $tags="trust")
+Rel(schema, cards, "Валидный draft или review_required")
+Rel(cards, review, "Карточка + provenance")
+Rel(underwriter, review, "TB-E3: подтверждает/исправляет", "SSO/MFA", $tags="trust")
+Rel(review, cards, "Подтверждение и audit")
+Rel(cards, loan, "Только подтверждённая карточка")
+Rel(orchestrator, obs, "Latency/failures")
+Rel(schema, obs, "Validation metrics")
+Rel(review, obs, "Correction metrics")
+
+SHOW_LEGEND()
+@enduml
