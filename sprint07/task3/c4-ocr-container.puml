@@ -1,0 +1,38 @@
+@startuml C4_OCR_Container
+!include https://raw.githubusercontent.com/plantuml-stdlib/C4-PlantUML/1e785da2dbb84bf1c5ecf7e0692154a5e2a0de0f/C4_Container.puml
+
+title RetailBank — OCR кредитных документов, C4 Container
+AddRelTag("trust", $lineStyle = DashedLine(), $legendText = "Пронумерованная граница доверия")
+
+Person(client, "Клиент", "Загружает документы")
+Person(underwriter, "Андеррайтер", "Проверяет OCR и исправляет ошибки")
+System_Ext(loan, "Система кредитных заявок", "Пакет и статусы")
+
+System_Boundary(bank, "Контролируемый контур RetailBank") {
+  Container(gateway, "Document Gateway", "API", "Приём, MIME/size checks, AV, quarantine")
+  ContainerDb(originals, "Неизменяемое хранилище", "Object storage", "Оригиналы и hashes")
+  Container(normalizer, "Document Normalizer", "Sandbox workers", "Безопасный render, deskew, rotate, quality")
+  Container(ocr, "OCR Service", "Self-hosted model", "Текст, блоки, координаты, confidence")
+  Container(validator, "OCR Validator", "Application service", "Схема, реквизиты, thresholds")
+  Container(review, "Review UI", "Web UI", "Подсветка источника и коррекция")
+  ContainerDb(result, "OCR Store", "Database/object storage", "Версии OCR и подтверждённые исправления")
+  Container(obs, "Audit & Monitoring", "Metrics/logs", "Качество, latency, доступы")
+}
+
+Rel(client, loan, "TB-D1: загружает недоверенный документ", $tags="trust")
+Rel(loan, gateway, "TB-D2: передаёт пакет", "mTLS", $tags="trust")
+Rel(gateway, originals, "Сохраняет оригинал/hash")
+Rel(gateway, normalizer, "Безопасный файл")
+Rel(normalizer, ocr, "Нормализованные страницы")
+Rel(ocr, validator, "OCR blocks")
+Rel(validator, result, "Валидный результат/status")
+Rel(validator, review, "review_required")
+Rel(underwriter, review, "TB-D3: проверяет/исправляет", "SSO/MFA", $tags="trust")
+Rel(review, result, "Подтверждённые исправления")
+Rel(result, loan, "OCR layer + provenance")
+Rel(gateway, obs, "Security events")
+Rel(ocr, obs, "Quality/latency")
+Rel(review, obs, "Correction metrics")
+
+SHOW_LEGEND()
+@enduml

@@ -1,0 +1,47 @@
+@startuml C4_Flagship_Component
+!include https://raw.githubusercontent.com/plantuml-stdlib/C4-PlantUML/1e785da2dbb84bf1c5ecf7e0692154a5e2a0de0f/C4_Component.puml
+
+title RetailBank — оркестратор приоритизации, C4 Component
+AddRelTag("trust", $lineStyle = DashedLine(), $legendText = "Пронумерованная граница доверия")
+
+Container_Ext(bus, "Шина событий", "Операции и внешние сигналы")
+Container_Ext(featureStore, "Feature Store", "Point-in-time признаки")
+Container_Ext(modelRegistry, "Model/Rule Registry", "Подписанные артефакты")
+Container_Ext(queue, "Очередь проверки", "Кейсы")
+Container_Ext(obs, "Наблюдаемость", "Метрики, логи, трассы")
+
+Container_Boundary(decision, "Сервис приоритизации") {
+  Component(consumer, "Idempotent consumer", "Application code", "Проверяет схему, дедуплицирует и управляет повторами")
+  Component(assembler, "Feature assembler", "Application code", "Запрашивает point-in-time признаки и оценивает свежесть")
+  Component(validator, "Input/OOD validator", "Application code", "Пропуски, диапазоны, новый сегмент, OOD")
+  Component(model, "Ranking model", "Tree-based ML", "Возвращает raw score и локальные вклады")
+  Component(calibrator, "Calibrator & abstention", "Deterministic code", "Калибрует score и задаёт зону воздержания")
+  Component(rules, "Обязательные правила ПВК", "Deterministic rule engine", "Не могут быть отменены моделью")
+  Component(explainer, "Reason mapper", "Deterministic code", "Преобразует факторы в утверждённые reason codes")
+  Component(router, "Queue router", "Application code", "Top-K, квоты, контрольная выборка и fallback")
+  Component(contract, "Output contract validator", "JSON Schema", "Проверяет обязательные поля до записи кейса")
+  Component(audit, "Audit publisher", "Application code", "Публикует версии, входы, результат и lineage")
+}
+
+Rel(bus, consumer, "TB-1: событие операции", $tags="trust")
+Rel(consumer, assembler, "Нормализованное событие")
+Rel(assembler, featureStore, "Получает признаки as-of event_time")
+Rel(assembler, validator, "Вектор + метаданные")
+Rel(validator, model, "Допустимый вектор")
+Rel(model, calibrator, "raw_score")
+Rel(modelRegistry, model, "TB-4: подписанные веса", $tags="trust")
+Rel(modelRegistry, rules, "Утверждённые правила")
+Rel(consumer, rules, "Операция")
+Rel(calibrator, explainer, "risk_score/status")
+Rel(model, explainer, "factors")
+Rel(rules, router, "mandatory signals")
+Rel(validator, router, "quality/OOD flags")
+Rel(explainer, router, "score/reasons")
+Rel(router, contract, "Кандидат результата")
+Rel(contract, queue, "Валидный кейс")
+Rel(contract, audit, "Результат")
+Rel(consumer, audit, "trace/input version")
+Rel(audit, obs, "Метрики/аудит")
+
+SHOW_LEGEND()
+@enduml

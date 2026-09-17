@@ -1,0 +1,46 @@
+@startuml C4_Flagship_Container
+!include https://raw.githubusercontent.com/plantuml-stdlib/C4-PlantUML/1e785da2dbb84bf1c5ecf7e0692154a5e2a0de0f/C4_Container.puml
+
+title RetailBank — приоритизация операций, C4 Container
+AddRelTag("trust", $lineStyle = DashedLine(), $legendText = "Пронумерованная граница доверия")
+
+Person(analyst, "Сотрудник финмониторинга", "Проверяет кейс и фиксирует результат")
+Person(owner, "Владелец ПВК", "Управляет обязательными правилами")
+
+System_Ext(core, "АБС / платёжный контур", "Операции и статусы")
+System_Ext(extSignals, "Внешние сигналы / ЗСК", "Вспомогательный уровень риска; не окончательное решение")
+System_Ext(investigation, "Система расследований", "Исходы и поздние формальные подтверждения")
+
+System_Boundary(bank, "Контролируемый контур RetailBank") {
+  Container(bus, "Шина событий", "Kafka-совместимый брокер", "Доставляет события с повтором и DLQ")
+  Container(feature, "Сервис признаков", "SQL/Python + online/offline store", "Point-in-time признаки и контроль свежести")
+  ContainerDb(featureDb, "Хранилище признаков", "Object storage / DB", "Версионированные offline/online признаки")
+  Container(prioritization, "Сервис приоритизации", "Python/Application service", "Модель, OOD, калибровка, правила ПВК, квоты и контракт")
+  ContainerDb(ruleDb, "Реестр правил и моделей", "Versioned repository", "Правила, пороги, версии, approvals")
+  Container(queue, "Очередь ручной проверки", "Case management", "Приоритетная и контрольная выборки")
+  Container(workplace, "Рабочее место финмониторинга", "Web UI", "Контекст, причины, решение и разметка")
+  Container(feedback, "Контур разметки и MLOps", "Data/ML platform", "Гайдлайн, sampling, datasets, обучение и registry")
+  Container(obs, "Наблюдаемость и аудит", "Metrics/logs/traces", "Технические, модельные и бизнес-метрики")
+}
+
+Rel(core, bus, "TB-1: публикует недоверенные входные события", "mTLS/event schema", $tags="trust")
+Rel(extSignals, bus, "TB-2: передаёт вспомогательный сигнал", "mTLS/API", $tags="trust")
+Rel(bus, feature, "События")
+Rel(feature, featureDb, "Читает/пишет признаки")
+Rel(feature, prioritization, "Вектор признаков")
+Rel(owner, ruleDb, "Утверждает правила/пороги")
+Rel(prioritization, ruleDb, "Читает утверждённые версии")
+Rel(prioritization, queue, "Создаёт/обновляет кейс")
+Rel(queue, workplace, "Выдаёт следующий кейс")
+Rel(analyst, workplace, "TB-3: проверяет и принимает решение", "SSO/MFA", $tags="trust")
+Rel(workplace, feedback, "Метка и исход проверки")
+Rel(investigation, feedback, "TB-5: передаёт независимые поздние исходы", "mTLS/versioned schema", $tags="trust")
+Rel(feedback, prioritization, "TB-4: выпускает принятую модель", "Signed artifact", $tags="trust")
+Rel(feedback, featureDb, "Формирует временные наборы")
+Rel(bus, obs, "Метрики потока")
+Rel(prioritization, obs, "Метрики модели и аудит решений")
+Rel(queue, obs, "SLA/backlog")
+Rel(workplace, obs, "Исходы и время разбора")
+
+SHOW_LEGEND()
+@enduml
