@@ -1,0 +1,101 @@
+@startuml
+title Africa Delivery — Топология развертывания и восстановления
+skinparam shadowing false
+skinparam componentStyle rectangle
+
+cloud "Глобальный DNS / CDN / WAF\nпубличные активы; без хранения PII" as Edge
+
+node "AWS af-south-1 — основной для ЮАР/Кении" as AWS {
+  node "Зона доступности A" as AZA {
+    artifact "Реплика приложения A\nединый OCI образ" as AppA
+    artifact "Воркер A" as WorkA
+    database "RDS (Master)" as RDSW
+  }
+  node "Зона доступности B" as AZB {
+    artifact "Реплика приложения B\nединый OCI образ" as AppB
+    artifact "Воркер B" as WorkB
+    database "RDS (Standby, синхр.)" as RDSS
+  }
+  queue "Управляемая очередь" as AQ
+  storage "S3 объекты / локальные бэкапы" as AS3
+  component "Региональный KMS / секреты" as AKMS
+  component "Телеметрия ЮАР/Кения" as ATel
+}
+
+node "Layer3Cloud Нигерия — граница размещения данных" as NG {
+  node "Площадка Лагос — основная" as Lagos {
+    artifact "Реплики приложения Нигерия\nединый OCI образ" as NApp
+    artifact "Воркеры Нигерии" as NWork
+    database "PostgreSQL (Master)" as NDB
+    storage "Локальные объекты + WAL" as NObj
+  }
+  node "Площадка Абуджа — warm standby\n(по контракту)" as Abuja {
+    artifact "Спящее/теплое приложение" as NAppDR
+    database "PostgreSQL (Replica)" as NDBDR
+    storage "Неизменяемый бэкап" as NBackup
+  }
+  component "Ключи / секреты Нигерии" as NKMS
+  component "Телеметрия Нигерии" as NTel
+}
+
+node "GCP africa-south1 — только холодный DR для ЮАР/Кения" as GCP {
+  node "Проект восстановления (обычно масштабирован до 0)" as GProject {
+    storage "Зашифрованное хранилище бэкапов ЮАР/Кения" as GVault
+    artifact "Зеркало реестра + IaC" as GIaC
+    database "Восстановленный Cloud SQL" as GDB
+    artifact "Реплики приложения для восстановления" as GApp
+  }
+  component "GCP KMS" as GKMS
+}
+
+cloud "Платежные сервисы" as Pay
+cloud "Логистика" as Log
+cloud "Мессенджеры" as Msg
+
+Edge --> AppA : ЮАР/Кения (HTTPS)
+Edge --> AppB : ЮАР/Кения (HTTPS)
+Edge --> NApp : Нигерия (HTTPS)
+
+AppA --> RDSW : TLS/SQL
+AppB --> RDSW : TLS/SQL
+RDSW --> RDSS : синхронная Multi-AZ репликация
+AppA --> AQ : работа outbox
+AppB --> AQ : работа outbox
+AQ --> WorkA
+AQ --> WorkB
+RDSW --> AS3 : зашифрованный бэкап/WAL
+AppA --> AKMS
+AppB --> ATel : маскированная телеметрия
+AS3 --> GVault : зашифрованная копия ЮАР/Кения\n(без данных Нигерии)
+GVault --> GKMS
+GVault --> GDB : только при объявленном восстановлении
+GIaC --> GApp : создание стека восстановления
+GApp --> GDB
+
+NApp --> NDB : TLS/SQL
+NApp --> NWork : локальный outbox/очередь
+NDB --> NDBDR : репликация внутри страны\nцелевой RPO 15 мин
+NObj --> NBackup : локальная неизменяемая копия
+NApp --> NKMS
+NApp --> NTel : локальная маскированная телеметрия
+NAppDR --> NDBDR : повышение статуса после объявления сбоя
+
+WorkA --> Pay : токенизированные платежи
+WorkA --> Log : HTTPS
+WorkA --> Msg : HTTPS
+NWork --> Pay : токенизированные платеты
+NWork --> Log : HTTPS
+NWork --> Msg : HTTPS
+
+note right of NG
+  ЗАПРЕЩЕНО: трансграничная репликация PII Нигерии,
+  ключей, логов, WAL, бэкапов или очередей.
+  Выход разрешен только для одобренных агрегатов.
+end note
+
+note bottom of GCP
+  Холодный DR предназначен только для ЮАР/Кении.
+  Переключение DNS происходит после проверки восстановления.
+end note
+
+@enduml
