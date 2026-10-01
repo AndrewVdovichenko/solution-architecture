@@ -1,0 +1,42 @@
+@startuml
+title Africa Delivery — Поток данных наблюдаемости
+skinparam shadowing false
+skinparam componentStyle rectangle
+
+actor "Покупатель / Продавец" as User
+component "PWA: синтетические сигналы\nи данные реальных пользователей" as PWA
+component "Модульное приложение:\nмодули + воркеры outbox" as App
+cloud "Провайдеры:\nплатежи / логистика / сообщения" as Providers
+
+component "OTel SDK\nметрики • логи • трассировки" as SDK
+component "Региональный коллектор\nудаление PII • сэмплирование • буферизация" as Collector
+database "Prometheus-совместимые\nметрики" as Metrics
+database "Loki\nструктурированные логи" as Logs
+database "Tempo\nраспределенные трассировки" as Traces
+component "Дашборды Grafana\nоценка SLO и burn-rate" as Grafana
+component "Маршрутизация алертов\nзвонок • тикет • инструкция" as Alerts
+actor "Инженер на дежурстве /\nвладелец сервиса" as OnCall
+
+User --> PWA : пользовательские пути
+PWA --> App : HTTPS + контекст трассировки
+App --> Providers : адаптеры провайдеров
+Providers --> App : вебхуки / квитанции
+
+PWA --> SDK : Web Vitals / ошибки
+App --> SDK : телеметрия модулей/провайдеров
+SDK --> Collector : OTLP
+Collector --> Metrics : одобренные метрики
+Collector --> Logs : логи с маскированием PII (по странам)
+Collector --> Traces : сэмплированные трассировки
+Metrics --> Grafana : числители/знаменатели SLI\nи золотые сигналы
+Logs --> Grafana : коррелированное исследование
+Traces --> Grafana : запрос → outbox → провайдер
+Grafana --> Alerts : алерты по burn-rate / целостности
+Alerts --> OnCall : ответственный + инструкция
+
+note right of Collector
+  Удалять секреты и сырые PII перед экспортом.
+  Маршрутизировать чувствительную телеметрию
+  согласно политике хранения данных.
+end note
+@enduml

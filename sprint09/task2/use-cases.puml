@@ -1,0 +1,58 @@
+@startuml
+left to right direction
+skinparam shadowing false
+skinparam packageStyle rectangle
+
+actor Buyer as "Покупатель"
+actor Seller as "Продавец"
+actor Ops as "Операционный отдел"
+actor Executive as "CEO / Аналитик"
+actor Payment as "Платежный провайдер"
+actor Logistics as "Логистический провайдер"
+actor Messaging as "SMS/Мессенджер шлюз"
+
+rectangle "Africa Delivery MVP" {
+  usecase Browse as "Поиск и просмотр\nкаталога"
+  usecase Order as "Оформление заказа"
+  usecase DeliveryDetails as "Выбор адреса доставки\nи контактных данных"
+  usecase Pay as "Оплата заказа"
+  usecase Track as "Просмотр статуса заказа"
+  usecase Notify as "Получение уведомлений\nо заказе"
+
+  usecase Onboard as "Завершение процесса\nонбординга продавца"
+  usecase Inventory as "Управление каталогом\nи остатками"
+  usecase SellerStatus as "Просмотр статуса заказов\nи взаиморасчетов"
+
+  usecase Verify as "Верификация продавца"
+  usecase Moderate as "Модерация каталога"
+  usecase Exceptions as "Обработка исключений по\nзаказам, доставке и возвратам"
+  usecase Dashboard as "Просмотр дашборда запуска"
+
+  usecase ConfirmPayment as "Авторизация и подтверждение\nплатежа"
+  usecase Fulfil as "Передача заказа на фулфилмент\nи получение данных трекинга"
+  usecase DeliverMessage as "Доставка SMS / WhatsApp\nсообщения"
+}
+
+Buyer --> Browse
+Buyer --> Order
+Buyer --> Track
+Buyer --> Notify
+Order .> DeliveryDetails : <<include>>
+Order .> Pay : <<include>>
+Pay .> ConfirmPayment : <<include>>
+
+Seller --> Onboard
+Seller --> Inventory
+Seller --> SellerStatus
+Ops --> Verify
+Ops --> Moderate
+Ops --> Exceptions
+Executive --> Dashboard
+
+Payment --> ConfirmPayment
+Logistics --> Fulfil
+Messaging --> DeliverMessage
+Order .> Fulfil : <<include>>
+Notify .> DeliverMessage : <<include>>
+Exceptions .> ConfirmPayment : <<extend>>
+@enduml

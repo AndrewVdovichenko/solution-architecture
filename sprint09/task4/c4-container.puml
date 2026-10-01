@@ -1,0 +1,83 @@
+@startuml
+!include <C4/C4_Container>
+
+title Africa Delivery — Диаграмма контейнеров C4 (Границы размещения данных)
+
+Person(buyer, "Покупатель", "Нигерия, Кения или ЮАР")
+Person(ops, "Операционный отдел", "Доступ в рамках своей страны")
+Person(exec, "Руководство", "Только агрегированные KPI")
+
+System_Ext(payments, "Лицензированные платежные провайдеры", "M-Pesa / Flutterwave / Paystack")
+System_Ext(logistics, "Логистические провайдеры", "Sendbox / Sendy")
+System_Ext(messages, "Провайдеры сообщений", "WhatsApp Business / SMS-USSD")
+
+System_Boundary(edge, "Глобальный Edge — без хранения PII") {
+  Container(cdn, "CDN / WAF / Маршрутизация", "HTTPS", "Публичный каталог/медиа, защита и маршрутизация по странам")
+}
+
+System_Boundary(aws, "AWS Кейптаун — разделы политик ЮАР и Кении") {
+  Container(webRegional, "Региональный PWA/API", "Go модульный монолит", "Идентификация, каталог, заказы, платежи, выполнение, уведомления")
+  Container(workerRegional, "Региональные воркеры", "Go", "Outbox, коллбэки провайдеров, сверка, хранение")
+  ContainerDb(dbRegional, "SA/KE PostgreSQL", "Управляемый PostgreSQL HA", "Разделенные по странам персональные и транзакционные данные")
+  ContainerDb(objRegional, "SA/KE Объектное хранилище", "Зашифрованное хранилище", "Медиа продуктов и ограниченные документы")
+  Container(queueRegional, "SA/KE Очередь + Outbox", "Управляемая очередь / PostgreSQL", "Разрешенные события стран")
+  Container(telemetryRegional, "SA/KE Телеметрия", "Региональный коллектор/хранилище", "Маскированные логи, трассировки, метрики")
+  Container(privacy, "Агрегатор конфиденциальности", "Batch job", "Пороговые значения и необратимая анонимизация")
+  ContainerDb(analytics, "Агрегированная аналитика", "PostgreSQL/BI", "Без персональных данных на уровне строк")
+}
+
+System_Boundary(ng, "Layer3Cloud Нигерия — граница размещения Нигерии") {
+  Container(webNigeria, "Нигерия PWA/API", "Тот же образ Go монолита", "Пути пользователей в Нигерии и маршрутизация")
+  Container(workerNigeria, "Нигерия Воркеры", "Go", "Outbox, коллбэки, сверка, хранение")
+  ContainerDb(dbNigeria, "Нигерия PostgreSQL", "PostgreSQL HA", "Персональные и транзакционные данные Нигерии")
+  ContainerDb(objNigeria, "Нигерия Объектное хранилище / Бэкап", "Зашифрованное хранилище", "Документы, бэкапы, WAL, экспорты")
+  Container(queueNigeria, "Нигерия Очередь + Outbox", "Очередь / PostgreSQL", "Операционные события Нигерии")
+  Container(telemetryNigeria, "Нигерия Телеметрия", "Локальный коллектор/хранилище", "Логи, трассировки, метрики Нигерии")
+  Container(keysNigeria, "Нигерия Сервис ключей", "KMS/HSM или эквивалент", "Ключи шифрования Нигерии")
+  Container(privacyNigeria, "Нигерия Агрегатор конфиденциальности", "Batch job", "Создает проверенные необратимые агрегаты внутри Нигерии")
+}
+
+System_Boundary(gcp, "GCP Йоханнесбург — холодное восстановление (только SA/KE)") {
+  ContainerDb(dr, "Зашифрованное хранилище восстановления", "Cloud Storage + KMS", "Бэкапы и артефакты SA/KE; без данных Нигерии")
+  Container(recovery, "Холодный стек восстановления", "Cloud Run + Cloud SQL restore", "Активируется только при тестах или объявленном сбое")
+}
+
+Rel(buyer, cdn, "Использует маркетплейс", "HTTPS / PWA с низкой полосой")
+Rel(ops, cdn, "Управляет назначенной страной", "HTTPS + MFA")
+Rel(cdn, webRegional, "Маршрутизирует запросы Кении/ЮАР", "HTTPS")
+Rel(cdn, webNigeria, "Маршрутизирует запросы Нигерии", "HTTPS")
+
+Rel(webRegional, dbRegional, "Чтение/запись партиции страны", "TLS/SQL")
+Rel(webRegional, objRegional, "Чтение/запись одобренных объектов", "HTTPS")
+Rel(webRegional, queueRegional, "Фиксация работы outbox", "TLS")
+Rel(queueRegional, workerRegional, "Доставка задач для обработки", "TLS")
+Rel(workerRegional, payments, "Токенизированные платежные операции", "HTTPS")
+Rel(workerRegional, logistics, "Минимальный полезный объем доставки", "HTTPS")
+Rel(workerRegional, messages, "Сообщения с проверкой согласия", "HTTPS")
+Rel(webRegional, telemetryRegional, "Эмиссия маскированной телеметрии", "OTLP")
+Rel(workerRegional, privacy, "Предоставление локальных агрегатов", "Разрешенный batch")
+Rel(privacy, analytics, "Запись необратимых агрегатов", "TLS/SQL")
+Rel(exec, analytics, "Просмотр агрегированных KPI", "HTTPS")
+Rel(dbRegional, dr, "Репликация зашифрованных бэкапов SA/KE", "Плановый частный трансфер")
+Rel(dr, recovery, "Восстановление после сбоя", "Контролируемое восстановление")
+
+Rel(webNigeria, dbNigeria, "Чтение/запись данных Нигерии", "TLS/SQL")
+Rel(webNigeria, objNigeria, "Чтение/запись объектов Нигерии", "HTTPS")
+Rel(webNigeria, queueNigeria, "Фиксация работы outbox", "TLS")
+Rel(queueNigeria, workerNigeria, "Доставка задач для обработки", "TLS")
+Rel(workerNigeria, payments, "Токенизированные платежные операции", "HTTPS")
+Rel(workerNigeria, logistics, "Минимальный объем данных Sendbox", "HTTPS")
+Rel(workerNigeria, messages, "Сообщения с проверкой согласия", "HTTPS")
+Rel(webNigeria, telemetryNigeria, "Эмиссия локальной телеметрии", "OTLP")
+Rel(dbNigeria, keysNigeria, "Использование локальных ключей", "KMS API")
+Rel(objNigeria, keysNigeria, "Использование ключей бэкапа", "KMS API")
+Rel(workerNigeria, privacyNigeria, "Предоставление локальных фактов", "Локальный batch")
+Rel(privacyNigeria, analytics, "Экспорт только необратимых агрегатов", "Подписанный batch")
+
+note bottom of ng
+  ЗАПРЕЩЕНО: PII Нигерии, связуемые псевдонимы, логи,
+  WAL, бэкапы, полезные нагрузки dead-letter или ключи в AWS/GCP.
+end note
+
+SHOW_LEGEND()
+@enduml

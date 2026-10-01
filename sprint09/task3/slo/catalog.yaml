@@ -1,0 +1,117 @@
+apiVersion: openslo/v1
+kind: Service
+metadata:
+  name: catalog
+  displayName: Каталог
+  labels:
+    serviceTier: "1"
+  annotations:
+    owner: Владелец каталога
+    platform-owner: Владелец платформы
+    dependencies: >-
+      CDN, объектное хранилище, среда исполнения приложения, PostgreSQL,
+      поиск и индексирование.
+    capacity-condition: >-
+      500 запросов/с в течение 15 минут при доле успешных ответов не ниже
+      99,9% и загрузке процессора и базы данных не выше 70%.
+spec:
+  description: >-
+    Клиентский путь чтения каталога через CDN и API. Платёжные,
+    логистические и коммуникационные провайдеры не входят в зависимости
+    операций чтения.
+---
+apiVersion: openslo/v1
+kind: SLO
+metadata:
+  name: catalog-availability
+  displayName: Доступность каталога
+  labels:
+    service: catalog
+    category: availability
+  annotations:
+    error-budget: 0,1% допустимых запросов; около 43 мин 50 с за 30 дней
+    sla-target: 99,5% за календарный месяц
+    sla-remedy: >-
+      Объявить клиентский инцидент, опубликовать сообщение для бизнеса и
+      завершить ретроспективу в течение трёх рабочих дней; финансовая
+      компенсация для внутреннего пилота не предусмотрена.
+    eligible-event: >-
+      Синтаксически корректный клиентский GET-запрос списка, поиска,
+      категории или карточки товара.
+    good-event: >-
+      Семантически корректный ответ 2xx или 3xx, включая явно помеченные
+      устаревшие данные возрастом не более четырёх часов.
+    exclusions: >-
+      Проверки состояния, распознанные боты, административный и импортный
+      трафик, отмена до получения запроса и невалидные запросы. Плановое
+      обслуживание, затронувшее пользователей, не исключается.
+spec:
+  description: >-
+    Доля успешных допустимых запросов каталога. При отказе источника можно
+    отдавать помеченные устаревшие описательные данные не старше четырёх
+    часов; цена и наличие повторно проверяются при оформлении заказа.
+  service: catalog
+  indicator:
+    metadata:
+      name: catalog-good-request-ratio
+      displayName: Доля успешных запросов каталога
+    spec:
+      ratioMetric:
+        good:
+          metricSource:
+            type: Prometheus
+            spec:
+              query: sum(increase(catalogue_requests_total{outcome="good"}[5m]))
+        total:
+          metricSource:
+            type: Prometheus
+            spec:
+              query: sum(increase(catalogue_requests_total{outcome=~"good|bad"}[5m]))
+  timeWindow:
+    - duration: 30d
+      isRolling: true
+  budgetingMethod: Occurrences
+  objectives:
+    - displayName: Не менее 99,9% успешных запросов
+      targetPercent: 99.9
+---
+apiVersion: openslo/v1
+kind: SLO
+metadata:
+  name: catalog-first-result-latency
+  displayName: Задержка первого результата каталога
+  labels:
+    service: catalog
+    category: latency
+  annotations:
+    test-profile: 1,5 Мбит/с; RTT 150 мс; потери пакетов 1%
+    data-volume-limit: Не более 500 КБ до первого пригодного результата
+spec:
+  description: >-
+    Не менее 99% допустимых клиентских операций должны получить первый
+    пригодный результат каталога не более чем за две секунды на целевом
+    мобильном сетевом профиле, что эквивалентно P99 не более двух секунд.
+  service: catalog
+  indicator:
+    metadata:
+      name: catalog-first-result-under-two-seconds
+      displayName: Доля первых результатов не дольше двух секунд
+    spec:
+      ratioMetric:
+        good:
+          metricSource:
+            type: Prometheus
+            spec:
+              query: sum(increase(catalogue_first_usable_result_duration_seconds_bucket{network_profile="target-mobile",le="2"}[5m]))
+        total:
+          metricSource:
+            type: Prometheus
+            spec:
+              query: sum(increase(catalogue_first_usable_result_duration_seconds_count{network_profile="target-mobile"}[5m]))
+  timeWindow:
+    - duration: 30d
+      isRolling: true
+  budgetingMethod: Occurrences
+  objectives:
+    - displayName: P99 не более двух секунд
+      targetPercent: 99.0
