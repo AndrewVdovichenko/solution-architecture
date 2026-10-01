@@ -1,0 +1,163 @@
+apiVersion: openslo/v1
+kind: Service
+metadata:
+  name: payments
+  displayName: Платежи
+  labels:
+    serviceTier: "1"
+  annotations:
+    owner: Владелец платежей
+    platform-owner: Владелец платформы
+    external-owner: Ответственный со стороны платёжного провайдера
+    dependencies: >-
+      PostgreSQL и outbox, среда исполнения, сеть, M-Pesa, Flutterwave и
+      в дальнейшем Paystack.
+    capacity-condition: >-
+      25 транзакций/с устойчиво и 50 транзакций/с в течение пяти минут без
+      дублирующих побочных эффектов.
+    integrity-policy: >-
+      Повторных списаний — 0. Тихо потерянных подтверждённых внешних
+      платежей — 0. Нарушение целостности вызывает немедленный инцидент и
+      не расходует бюджет ошибок доступности.
+spec:
+  description: >-
+    Модуль платежей, адаптеры провайдеров, обработка вебхуков и сверка.
+    Сбои провайдеров учитываются в пользовательских SLI.
+---
+apiVersion: openslo/v1
+kind: SLO
+metadata:
+  name: payment-initiation-availability
+  displayName: Доступность инициации платежа
+  labels:
+    service: payments
+    category: availability
+  annotations:
+    error-budget: 0,05% допустимых попыток; около 21 мин 55 с за 30 дней
+    sla-target: 99,9% за календарный месяц
+    slo-sla-rationale: >-
+      Внутренний SLO 99,95% строже бизнес-SLA 99,9% и создаёт запас для
+      исправления деградации до нарушения обязательства.
+    sla-remedy: >-
+      Провести сверку за затронутый период, уведомить финансового и
+      генерального директоров и завершить ретроспективу в течение двух
+      рабочих дней; финансовая компенсация для внутреннего пилота не
+      предусмотрена.
+    eligible-event: >-
+      Синтаксически корректная аутентифицированная инициация платежа для
+      заказа, готового к оплате.
+    good-event: >-
+      За три секунды возвращён статус accepted, pending или детерминированный
+      бизнес-отказ, а попытка надёжно и идемпотентно зафиксирована.
+    exclusions: >-
+      Ошибка аутентификации, некорректный запрос, недостаток средств, отмена
+      пользователем, неподдерживаемый способ оплаты, отказ из-за мошенничества
+      или бизнес-политики. Плановое обслуживание не исключается.
+spec:
+  description: >-
+    Доля успешных допустимых попыток инициации платежа. Тайм-ауты, ошибки
+    5xx, неопределённые результаты, технические отказы провайдера и
+    ненадёжно зафиксированные попытки являются плохими событиями.
+  service: payments
+  indicator:
+    metadata:
+      name: payment-initiation-good-attempt-ratio
+      displayName: Доля успешных инициаций платежа
+    spec:
+      ratioMetric:
+        good:
+          metricSource:
+            type: Prometheus
+            spec:
+              query: sum(increase(payment_attempts_total{outcome=~"accepted|pending|business_rejected"}[5m]))
+        total:
+          metricSource:
+            type: Prometheus
+            spec:
+              query: sum(increase(payment_attempts_total[5m]))
+  timeWindow:
+    - duration: 30d
+      isRolling: true
+  budgetingMethod: Occurrences
+  objectives:
+    - displayName: Не менее 99,95% успешных инициаций
+      targetPercent: 99.95
+---
+apiVersion: openslo/v1
+kind: SLO
+metadata:
+  name: payment-finalization
+  displayName: Завершение платежа
+  labels:
+    service: payments
+    category: availability
+  annotations:
+    eligible-event: Попытка платежа, принятая провайдером
+    good-event: >-
+      Терминальное или явно сверенное состояние достигнуто не более чем за
+      пять минут.
+spec:
+  description: >-
+    Доля принятых провайдером попыток, достигших терминального или явно
+    сверенного состояния в течение пяти минут.
+  service: payments
+  indicator:
+    metadata:
+      name: payment-finalization-under-five-minutes
+      displayName: Доля завершений не дольше пяти минут
+    spec:
+      ratioMetric:
+        good:
+          metricSource:
+            type: Prometheus
+            spec:
+              query: sum(increase(payment_finalization_delay_seconds_bucket{le="300"}[5m]))
+        total:
+          metricSource:
+            type: Prometheus
+            spec:
+              query: sum(increase(payment_finalization_delay_seconds_count[5m]))
+  timeWindow:
+    - duration: 30d
+      isRolling: true
+  budgetingMethod: Occurrences
+  objectives:
+    - displayName: Не менее 99% завершений за пять минут
+      targetPercent: 99.0
+---
+apiVersion: openslo/v1
+kind: SLO
+metadata:
+  name: payment-initiation-latency
+  displayName: Задержка инициации платежа
+  labels:
+    service: payments
+    category: latency
+spec:
+  description: >-
+    Не менее 99% допустимых попыток получают обрабатываемое состояние не
+    более чем за три секунды, что эквивалентно P99 не более трёх секунд.
+  service: payments
+  indicator:
+    metadata:
+      name: payment-initiation-under-three-seconds
+      displayName: Доля инициаций не дольше трёх секунд
+    spec:
+      ratioMetric:
+        good:
+          metricSource:
+            type: Prometheus
+            spec:
+              query: sum(increase(payment_initiation_duration_seconds_bucket{le="3"}[5m]))
+        total:
+          metricSource:
+            type: Prometheus
+            spec:
+              query: sum(increase(payment_initiation_duration_seconds_count[5m]))
+  timeWindow:
+    - duration: 30d
+      isRolling: true
+  budgetingMethod: Occurrences
+  objectives:
+    - displayName: P99 не более трёх секунд
+      targetPercent: 99.0

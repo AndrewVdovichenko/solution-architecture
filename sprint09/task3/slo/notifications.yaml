@@ -1,0 +1,150 @@
+apiVersion: openslo/v1
+kind: Service
+metadata:
+  name: notifications
+  displayName: Уведомления
+  labels:
+    serviceTier: "2"
+  annotations:
+    owner: Владелец уведомлений
+    operations-owner: Операционный отдел — шаблоны и политика согласий
+    dependencies: >-
+      Outbox и очереди, обработчики, WhatsApp Business API, SMS-шлюз,
+      сведения о согласиях пользователей и шаблоны сообщений.
+    capacity-condition: >-
+      100 сообщений/с при возрасте старейшего допустимого элемента очереди
+      менее пяти минут.
+spec:
+  description: >-
+    Модуль уведомлений, обработчики outbox и очередей, адаптер WhatsApp и
+    адаптер SMS-шлюза.
+---
+apiVersion: openslo/v1
+kind: SLO
+metadata:
+  name: notification-acceptance-five-minutes
+  displayName: Принятие уведомления за пять минут
+  labels:
+    service: notifications
+    category: availability
+  annotations:
+    error-budget: 1% допустимых событий
+    sla-target: 98,5% событий приняты провайдером за десять минут
+    slo-sla-rationale: >-
+      Внутренний SLO 99% за пять минут строже бизнес-SLA 98,5% за десять
+      минут и создаёт запас для восстановления.
+    sla-remedy: >-
+      Объявить операционный инцидент и составить план повторной обработки;
+      доставка на устройство и финансовые компенсации не гарантируются.
+    eligible-event: >-
+      Надёжно сохранённое событие с хотя бы одним валидным каналом, на
+      использование которого пользователь дал согласие.
+    good-event: >-
+      Хотя бы один разрешённый провайдер принял сообщение в течение пяти
+      минут с момента создания события.
+    exclusions: >-
+      Отсутствие согласованного канала, заранее подтверждённый невалидный
+      адрес назначения или отказ пользователя от рассылки. Технический
+      сбой провайдера не исключается.
+spec:
+  description: >-
+    Доля допустимых надёжных событий, принятых хотя бы одним разрешённым
+    провайдером в течение пяти минут.
+  service: notifications
+  indicator:
+    metadata:
+      name: notification-acceptance-under-five-minutes
+      displayName: Доля принятых уведомлений за пять минут
+    spec:
+      ratioMetric:
+        good:
+          metricSource:
+            type: Prometheus
+            spec:
+              query: sum(increase(notification_delivery_delay_seconds_bucket{outcome="accepted",le="300"}[5m]))
+        total:
+          metricSource:
+            type: Prometheus
+            spec:
+              query: sum(increase(notification_events_total[5m]))
+  timeWindow:
+    - duration: 30d
+      isRolling: true
+  budgetingMethod: Occurrences
+  objectives:
+    - displayName: Не менее 99% приняты за пять минут
+      targetPercent: 99.0
+---
+apiVersion: openslo/v1
+kind: SLO
+metadata:
+  name: notification-acceptance-one-minute
+  displayName: Быстрое принятие уведомления
+  labels:
+    service: notifications
+    category: latency
+spec:
+  description: >-
+    Не менее 95% допустимых событий должны быть приняты хотя бы одним
+    разрешённым провайдером в течение одной минуты.
+  service: notifications
+  indicator:
+    metadata:
+      name: notification-acceptance-under-one-minute
+      displayName: Доля принятых уведомлений за одну минуту
+    spec:
+      ratioMetric:
+        good:
+          metricSource:
+            type: Prometheus
+            spec:
+              query: sum(increase(notification_delivery_delay_seconds_bucket{outcome="accepted",le="60"}[5m]))
+        total:
+          metricSource:
+            type: Prometheus
+            spec:
+              query: sum(increase(notification_events_total[5m]))
+  timeWindow:
+    - duration: 30d
+      isRolling: true
+  budgetingMethod: Occurrences
+  objectives:
+    - displayName: Не менее 95% приняты за одну минуту
+      targetPercent: 95.0
+---
+apiVersion: openslo/v1
+kind: SLO
+metadata:
+  name: notification-enqueue-latency
+  displayName: Задержка постановки уведомления в очередь
+  labels:
+    service: notifications
+    category: latency
+spec:
+  description: >-
+    Не менее 99% допустимых событий надёжно ставятся в очередь не более чем
+    за одну секунду, что эквивалентно P99 не более одной секунды.
+  service: notifications
+  indicator:
+    metadata:
+      name: notification-enqueue-under-one-second
+      displayName: Доля постановок в очередь не дольше секунды
+    spec:
+      ratioMetric:
+        good:
+          metricSource:
+            type: Prometheus
+            spec:
+              query: sum(increase(notification_enqueue_duration_seconds_bucket{le="1"}[5m]))
+        total:
+          metricSource:
+            type: Prometheus
+            spec:
+              query: sum(increase(notification_enqueue_duration_seconds_count[5m]))
+  timeWindow:
+    - duration: 30d
+      isRolling: true
+  budgetingMethod: Occurrences
+  objectives:
+    - displayName: P99 не более одной секунды
+      targetPercent: 99.0
